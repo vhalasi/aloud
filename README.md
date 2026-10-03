@@ -23,7 +23,8 @@ should obtain short-lived Live API tokens from a backend instead.
 
 Tap **Start AI**, allow microphone/camera access, and hold the phone upright with its
 **front camera / screen facing the scene**. Aloud starts depth sensing if necessary,
-briefly describes the first image, then listens for spoken questions. **Describe
+greets you briefly, then listens for spoken questions and highlights useful visible changes.
+The greeting does not mention missing images while the camera starts. **Describe
 surroundings** requests another description. You can interrupt by speaking. If voice is silent, press the volume-up button while AI is on and tap **Test speaker** for two tones through the same playback path. **Audio details** shows the output route, volume and completed audio buffers. The latest
 question and reply appear as text. **Stop AI** ends network streaming and audio while
 local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding ends both.
@@ -53,12 +54,24 @@ The app sends the corresponding `X-Ios-Bundle-Identifier` header. Set
 `PLACES_API_KEY` in the ignored `LocalSecrets.xcconfig` and rebuild; it is embedded
 in the app just like the shared Gemini key. No credential values belong in Git.
 
-With a Places key configured, Start AI asks for **While Using the App** location
-permission before connecting the voice session. Denial leaves voice/vision usable.
-Ask **“Find a restaurant near me”**, **“Is it open?”**, or **“Are there museums nearby?”**.
+Start AI asks for **While Using the App** location permission before connecting
+the voice session, even without a Places key. Denial leaves voice/vision usable.
+Ask **“Where am I?”**, **“Find a restaurant near me”**, **“Is it open?”**, or
+**“Are there museums nearby?”**.
 
-- Gemini calls `find_nearby_places` or `get_place_details` through the existing Live
-  WebSocket. The app performs the HTTPS requests and returns the results to Gemini.
+- Gemini can call `get_current_location` through the Live WebSocket. This tool
+  returns a measured Core Location fix with coordinates, timestamp, age and reported
+  accuracy, plus an approximate address from Apple reverse geocoding when available.
+  Fixes must be less than 60 seconds old. Approximate permission is supported and
+  coarse fixes omit street/house numbers. Address lookup has a four-second deadline;
+  its failure does not discard the location. This tool does not require a Places key.
+- The prompt directs the agent to try the location tool before claiming it lacks
+  location access, qualify approximate fixes and prefer an address over spoken
+  coordinates. Permission failures and unavailable fixes have distinct errors.
+- With a Places key, Gemini can also call `find_nearby_places` or `get_place_details`.
+  The app performs the HTTPS requests and returns the results to Gemini.
+- Location requests share the fix with Gemini and send it to Apple for address
+  lookup. Nearby searches send the position to Google Places.
 - Searches use device coordinates, never coordinates supplied by the model. Fixes
   must be less than 60 seconds old and have reported accuracy within 500 metres.
   There is no background location tracking or persistent location history.
@@ -72,15 +85,21 @@ Ask **“Find a restaurant near me”**, **“Is it open?”**, or **“Are ther
 - Places results and source links appear under Google Maps attribution. Results
   stay in memory and are cleared when AI stops. Search failures return explicit
   errors to the agent; cancelled tool calls and stopped sessions discard results.
-- Searches are limited to one in flight, have finite timeouts and request explicit
-  field masks. Opening-hours details use a higher Places billing tier than the
+- Tool calls are serialized with at most four pending requests, so a location
+  request and a nearby search can complete in sequence. Searches have finite
+  timeouts and request explicit field masks. Opening-hours details use a higher Places billing tier than the
   basic nearby search. This integration does not add general web/history research.
 
 On October 3, 2026, the restricted key passed real Nearby Search and Place Details
 requests at public Stockholm Central test coordinates. A Gemini Live test invoked
 `find_nearby_places`, received real Places results and generated a PCM spoken reply.
-Signed iPhone and simulator builds and protocol checks pass. Device location
-permission and nearby recommendations still need a physical phone trial.
+The explicit location tool also passed a real Gemini Live round-trip using a
+synthetic location fixture: “Where am I?” triggered `get_current_location` and
+a spoken response after the tool result. With no camera images sent, session
+startup produced a friendly spoken greeting without mentioning missing images.
+Signed iPhone and simulator builds, protocol checks, and location freshness/accuracy
+checks pass. Actual phone location accuracy and recommendations still need a
+physical phone trial.
 
 ## Prototype behavior
 
@@ -114,6 +133,18 @@ xcrun swiftc Aloud/LiveProtocol.swift Tests/LiveProtocolChecks.swift \
 ./build/live-protocol-checks
 ```
 
+For the Core Location fixture checks, compile for a booted iOS simulator (replace
+`<SIMULATOR_ID>` with its identifier):
+
+```sh
+xcrun --sdk iphonesimulator swiftc -target arm64-apple-ios17.0-simulator \
+  -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+  Aloud/PlacesLocation.swift Tests/LocationChecks.swift -o build/location-checks
+xcrun simctl spawn <SIMULATOR_ID> "$PWD/build/location-checks"
+```
+
+Location checks cover expired/future/invalid fixes, precise versus coarse acceptance,
+and accuracy/freshness in the tool payload, without requesting real location access.
 The standalone checks cover a non-silent demo starting distance, increasing pulse frequency/intensity, distance boundaries, invalid measurements, minimum valid coverage, isolated outliers, and nearby surface selection.
 
 ## Validation status

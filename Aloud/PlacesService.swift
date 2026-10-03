@@ -25,8 +25,9 @@ final class PlacesService {
     func reset() { knownIDs.removeAll(); onResults?([]) }
 
     func execute(name: String, arguments: [String: Any]) async -> [String: Any] {
-        guard isConfigured else { return ["error": "Places is not configured in this build."] }
         do {
+            if name == "get_current_location" { return try await currentLocation() }
+            guard isConfigured else { return ["error": "Places is not configured in this build."] }
             switch name {
             case "find_nearby_places": return try await nearby(arguments)
             case "get_place_details": return try await details(arguments)
@@ -35,13 +36,47 @@ final class PlacesService {
         } catch is CancellationError {
             return ["error": "Search cancelled."]
         } catch let error as PlacesLocation.LocationError {
-            return ["error": error.localizedDescription]
+            return ["error": error.localizedDescription, "error_code": error.code]
         } catch let error as PlacesError {
             return ["error": error.localizedDescription]
         } catch {
             // Do not expose raw requests, API keys or the user's precise location.
             return ["error": "Places search could not complete. Check the internet connection and try again."]
         }
+    }
+
+    private func currentLocation() async throws -> [String: Any] {
+        let fix = try await location.current(allowApproximate: true)
+        try Task.checkCancellation()
+        var result = PlacesLocation.toolResult(for: fix, reducedAccuracy: location.reducedAccuracy)
+        // Reverse geocoding is optional: preserve the fix even if address lookup fails.
+        let geocoder = CLGeocoder()
+        let deadline = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { geocoder.cancelGeocode() }
+        }
+        defer { deadline.cancel() }
+        let marks = await withTaskCancellationHandler {
+            try? await geocoder.reverseGeocodeLocation(fix)
+        } onCancel: {
+            Task { @MainActor in geocoder.cancelGeocode() }
+        }
+        try Task.checkCancellation()
+        if let mark = marks?.first {
+            var address: [String: String] = [:]
+            address["city"] = mark.locality
+            address["region"] = mark.administrativeArea
+            address["country"] = mark.country
+            // A coarse fix is useful for a city, but not a street/house number.
+            if fix.horizontalAccuracy <= 100 && !location.reducedAccuracy {
+                address["street"] = mark.thoroughfare
+                address["street_number"] = mark.subThoroughfare
+                address["neighborhood"] = mark.subLocality
+            }
+            result["approximate_address"] = address
+            result["address_source"] = "Apple reverse geocoding; address is an estimate, not a confirmed building identity"
+        }
+        return result
     }
 
     private func nearby(_ arguments: [String: Any]) async throws -> [String: Any] {

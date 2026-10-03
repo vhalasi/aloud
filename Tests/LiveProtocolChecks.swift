@@ -29,8 +29,11 @@ struct LiveProtocolChecks {
         assert((LiveProtocol.describe()["clientContent"] as! [String: Any])["turnComplete"] as? Bool == true)
         let enabled = LiveProtocol.setup(placesEnabled: true)["setup"] as! [String: Any]
         let declarations = ((enabled["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
-        assert(declarations.count == 2)
-        assert(setup["tools"] == nil)
+        assert(declarations.count == 3)
+        let baseline = ((setup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
+        assert(baseline.count == 1 && baseline[0]["name"] as? String == "get_current_location")
+        let locationCall = tryParse(#"{"toolCall":{"functionCalls":[{"id":"gps-1","name":"get_current_location","args":{}}]}}"#).toolCalls[0]
+        assert(locationCall.name == "get_current_location" && locationCall.arguments.isEmpty)
         let toolEvent = tryParse(#"{"toolCall":{"functionCalls":[{"id":"search-1","name":"find_nearby_places","args":{"category":"restaurant","radius_metres":800}},{"name":"missing_id"}]}}"#)
         assert(toolEvent.toolCalls.count == 1)
         let call = toolEvent.toolCalls[0]

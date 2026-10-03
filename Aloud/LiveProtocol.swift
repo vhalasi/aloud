@@ -12,18 +12,32 @@ enum LiveProtocol {
             "outputAudioTranscription": [:],
             "contextWindowCompression": ["slidingWindow": [:]],
             "systemInstruction": ["parts": [["text": """
-                You are Aloud, a calm visual companion for a blind person. Images come from the
+                You are Aloud, a calm voice companion helping a blind person orient themselves
+                and navigate their surroundings through useful descriptions and local information.
+                Address the user directly and respectfully; do not assume they can see the screen.
+                Begin each session with a short, friendly greeting, such as "Hi, I'm Aloud.
+                I'm here to help you explore your surroundings. What would you like to know?"
+                The opening should be a greeting, not a scene description. Do not mention missing
+                images or camera startup in the greeting. Wait for usable images before describing
+                the scene; if the user asks for a description and no usable image is available,
+                explain that honestly. Images come from the
                 iPhone FRONT camera, pointed away from the user toward their surroundings.
                 Describe only what is visible in the latest images. Speak concisely, usually
-                one or two sentences. Answer spoken questions naturally. After an initial
-                description, occasionally mention a significant visible change; avoid repetitive
+                one or two sentences. Answer spoken questions naturally. After the greeting,
+                occasionally mention a significant visible feature or change; avoid repetitive
                 narration. Respect requests for quiet and let the user interrupt.
                 If the view is obstructed, dark, blurry or stale, say so. Do not invent objects,
                 read illegible text, estimate precise distances, or claim that a path is safe.
                 Never tell the user it is safe to cross a street or move forward. This prototype
-                provides descriptions, not mobility guidance. Local depth sensing independently
+                supports orientation and awareness, not turn-by-turn mobility instructions. Local depth sensing independently
                 controls vibration; you cannot feel or control those vibrations. Do not infer
                 left/right from a mirrored selfie: frames are unmirrored camera views.
+                You CAN access the phone's location through get_current_location. When the
+                user asks where they are or asks for their current location, call it; do not
+                claim you have no GPS access without trying. Report permission/unavailability
+                errors honestly, and qualify approximate fixes. Never use the camera or your
+                training data to invent the user's location. Do not read coordinates aloud
+                unless requested; prefer the returned approximate address.
                 For local recommendations, use find_nearby_places and get_place_details when
                 available. Never invent nearby businesses or opening hours. Ask for details
                 before claiming a place is open. Explain that distances are approximate,
@@ -33,9 +47,15 @@ enum LiveProtocol {
                 building seen in the camera. If tools are unavailable, say so.
                 """]]]
         ]
-        if placesEnabled { setup["tools"] = [["functionDeclarations": placeFunctions]] }
+        setup["tools"] = [["functionDeclarations": [locationFunction] + (placesEnabled ? placeFunctions : [])]]
         return ["setup": setup]
     }
+
+    static let locationFunction: [String: Any] = [
+        "name": "get_current_location", "behavior": "NON_BLOCKING",
+        "description": "Get the iPhone's current measured location: latitude, longitude, timestamp, age, uncertainty radius and optional approximate street/city/country. Call when asked where the user is or for their current location. No arguments; do not guess the location. Works independently of Google Places. Errors explain missing permission or unavailable fixes.",
+        "parameters": ["type": "OBJECT", "properties": [:]]
+    ]
 
     static let placeFunctions: [[String: Any]] = [
         ["name": "find_nearby_places", "behavior": "NON_BLOCKING",
@@ -66,6 +86,11 @@ enum LiveProtocol {
     static func describe() -> [String: Any] {
         ["clientContent": ["turns": [["role": "user", "parts": [["text":
             "Briefly describe what the front camera is pointing at now. If no usable image is available, say so."]]]], "turnComplete": true]]
+    }
+
+    static func greet() -> [String: Any] {
+        ["clientContent": ["turns": [["role": "user", "parts": [["text":
+            "The live session has just started. Give your brief friendly greeting now. Do not describe the scene or mention missing images or camera startup in this greeting."]]]], "turnComplete": true]]
     }
 
     struct Event {

@@ -17,6 +17,7 @@ final class GeminiLiveClient: ObservableObject {
     @Published private(set) var nearbyPlaces: [NearbyPlace] = []
     private let places = PlacesService()
     private var toolTasks: [String: Task<Void, Never>] = [:]
+    private var toolQueueTail: Task<Void, Never>?
     private var handledToolIDs = Set<String>()
     var hasPlacesKey: Bool { places.isConfigured }
 
@@ -40,7 +41,6 @@ final class GeminiLiveClient: ObservableObject {
     private var lastCameraFrame: TimeInterval = 0
     private var newOutputTurn = true
     private var newInputTurn = true
-    private var initialDescriptionSent = false
 
     init() {
         places.onResults = { [weak self] results in self?.nearbyPlaces = results }
@@ -85,13 +85,15 @@ final class GeminiLiveClient: ObservableObject {
                 needsSettings = true
                 return
             }
-            if places.isConfigured {
-                status = "Preparing location for nearby places…"
+            do {
+                status = "Preparing location access…"
                 do {
-                    _ = try await places.location.current(requestPermission: true)
-                    placesStatus = "Nearby search ready. Ask for restaurants or places around you."
+                    _ = try await places.location.current(requestPermission: true, allowApproximate: true)
+                    placesStatus = "Location ready. Ask where you are or what is nearby."
                 } catch {
-                    placesStatus = "Location unavailable. Enable location for Aloud in Settings to search nearby."
+                    guard generation == token, isActive else { return }
+                    placesStatus = (error as? PlacesLocation.LocationError)?.localizedDescription ?? "Location unavailable. Ask again to retry."
+                    needsSettings = (error as? PlacesLocation.LocationError)?.code == "permission_denied"
                 }
                 guard generation == token, isActive else { return }
             }
@@ -115,7 +117,6 @@ final class GeminiLiveClient: ObservableObject {
         transcript = ""
         heard = ""
         framesSent = 0
-        initialDescriptionSent = false
         newInputTurn = true
         newOutputTurn = true
         socket.resume()
@@ -154,19 +155,25 @@ final class GeminiLiveClient: ObservableObject {
         for call in event.toolCalls {
             guard !handledToolIDs.contains(call.id) else { continue }
             handledToolIDs.insert(call.id)
-            guard places.isConfigured, toolTasks.isEmpty else {
-                enqueue(LiveProtocol.toolResponse(call, result: ["error": "Places unavailable or another search is in progress. Retry after it completes."]))
+            guard toolTasks.count < 4 else {
+                enqueue(LiveProtocol.toolResponse(call, result: ["error": "Too many pending requests. Retry after the current requests complete."]))
                 continue
             }
-            placesStatus = "Looking up Google Maps…"
-            toolTasks[call.id] = Task { [weak self] in
-                guard let self else { return }
+            let previous = toolQueueTail
+            placesStatus = call.name == "get_current_location" ? "Getting your current location…" : "Looking up Google Maps…"
+            let task = Task { [weak self] in
+                await previous?.value
+                guard !Task.isCancelled, let self, self.generation == token, self.isConnected else { return }
                 let result = await self.places.execute(name: call.name, arguments: call.arguments)
                 guard !Task.isCancelled, self.generation == token, self.isConnected else { return }
                 self.toolTasks[call.id] = nil
-                self.placesStatus = result["error"] as? String ?? "Google Maps results updated"
+                if self.toolTasks.isEmpty { self.toolQueueTail = nil }
+                self.placesStatus = result["error"] as? String ?? (call.name == "get_current_location" ? "Current location shared with the voice agent" : "Google Maps results updated")
+                if result["error_code"] as? String == "permission_denied" || result["error_code"] as? String == "precise_location_needed" { self.needsSettings = true }
                 self.enqueue(LiveProtocol.toolResponse(call, result: result))
             }
+            toolTasks[call.id] = task
+            toolQueueTail = task
         }
         if let code = event.errorCode {
             stop(message: "Gemini rejected the request (\(code)). Check the API key, quota and model access.")
@@ -191,6 +198,7 @@ final class GeminiLiveClient: ObservableObject {
             }
             isConnected = true
             status = "Live · front camera + microphone"
+            enqueue(LiveProtocol.greet())
             onStreamingChanged?(true)
             onReadyForCamera?()
             lastCameraFrame = ProcessInfo.processInfo.systemUptime
@@ -234,7 +242,6 @@ final class GeminiLiveClient: ObservableObject {
         guard pending.count < 10 else { return }
         enqueue(LiveProtocol.media(jpeg, mimeType: "image/jpeg", kind: "video"))
         framesSent += 1
-        if !initialDescriptionSent { initialDescriptionSent = true; describe() }
     }
 
     func testSpeaker() {
@@ -277,6 +284,7 @@ final class GeminiLiveClient: ObservableObject {
         startupTask?.cancel(); startupTask = nil
         for task in toolTasks.values { task.cancel() }
         toolTasks.removeAll()
+        toolQueueTail = nil
         handledToolIDs.removeAll()
         places.reset()
         isConnected = false

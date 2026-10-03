@@ -43,10 +43,10 @@ struct ContentView: View {
                         }
                         Text("Front-camera images sent: \(live.framesSent)").font(.caption)
                     }
-                    if live.hasPlacesKey {
-                        Text(live.placesStatus.isEmpty ? "Ask about nearby restaurants, cafes or attractions." : live.placesStatus)
+                    if live.isActive || !live.placesStatus.isEmpty {
+                        Text(live.placesStatus.isEmpty ? "Ask where you are or what is nearby." : live.placesStatus)
                             .font(.footnote)
-                        Text("Nearby searches send your location to Google Places.")
+                        Text("Location requests share your position with Gemini and use Apple to look up an address. Nearby searches send your position to Google Places.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     if !live.nearbyPlaces.isEmpty {
