@@ -89,6 +89,14 @@ swiftc Aloud/LiveProtocol.swift Tests/SceneReviewChecks.swift -o /tmp/aloud-scen
 
 ### Starting a session
 
+For email requests, the voice agent calls **read_gmail**, which uses Browser Use
+computer use on Gmail with the saved signed-in profile. Try “Can you check my
+Gmail?” or ask for a specific message. It shares the status/cancel controls with
+research. Public research remains signed out and Matrix remains available for
+computer tasks. Email access is instructed to be read-only; sending and mailbox
+changes are not implemented. Login expiry is reported instead of requesting
+passwords in the app. Profile IDs and credentials stay on the backend.
+
 The developer supplies one shared hackathon key; users do not enter credentials.
 Copy `LocalSecrets.xcconfig.example` to `LocalSecrets.xcconfig`, paste the Gemini API key
 on the `GEMINI_API_KEY =` line, save, and rebuild. This local file is ignored by Git.

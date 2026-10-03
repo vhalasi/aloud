@@ -63,6 +63,32 @@ test('provider request uses server credential, cost limit, Flash low reasoning a
   assert.equal(captured.headers['X-Browser-Use-API-Key'],'secret');
   assert.equal(body.model,'gemini-3.6-flash'); assert.equal(body.modelParams.thinkingConfig.thinkingLevel,'low');
   assert.equal(body.maxCostUsd,.25); assert.equal(body.browserSettings.record,false); assert.equal(body.agentmail,false);
+  assert.equal(body.browserSettings.profileId, undefined);
+});
+
+test('Gmail alone receives the saved profile and explicit browser-only email instructions', async () => {
+  const bodies: any[] = [];
+  const provider = new BrowserUse({BROWSER_USE_API_KEY:'secret', BROWSER_USE_GMAIL_PROFILE_ID:'gmail-profile'},
+    (async (_url: any, init: any) => { bodies.push(JSON.parse(init.body)); return Response.json({id:'run'}); }) as typeof fetch);
+  const job = {id:'job-test', prompt:'Check Gmail', status:'queued', createdAt:0, deadline:1, submitted:true, timeoutSeconds:30};
+  await provider.create({...job, mode:'gmail'});
+  await provider.create(job);
+  assert.equal(bodies[0].browserSettings.profileId,'gmail-profile');
+  assert.equal(bodies[0].browserSettings.record,false);
+  assert.match(bodies[0].task,/browser computer use/);
+  assert.match(bodies[0].task,/Never send, reply, forward/);
+  assert.equal(bodies[1].browserSettings.profileId,undefined);
+  assert.match(bodies[1].task,/public web sources only/);
+  assert.throws(() => new BrowserUse({BROWSER_USE_API_KEY:'secret'}).create({...job, mode:'gmail'}),
+    {code:'gmail_profile_not_configured', definitive:true});
+});
+
+test('a public research idempotency key cannot be repurposed for Gmail', async () => {
+  const f = fixture(); await f.submit();
+  const response = await f.job.fetch(new Request('https://internal/submit', {
+    method:'POST', body:JSON.stringify({...f.input, mode:'gmail'})
+  }));
+  assert.equal(response.status,409); assert.equal(f.state().creates,1);
 });
 
 test('definitive credit rejection stops immediately without reconciliation or duplicate billing', async () => {

@@ -233,7 +233,7 @@ struct ContentView: View {
                 }
                 Section("About this prototype") {
                     Text("Only the centre of the camera view is measured. No reading does not mean a clear path. This is an awareness aid, not a crossing or navigation safety system.")
-                    Text("While active, audio, front-camera images and proximity readings go to Google Gemini. Requested location lookups use Apple and Google Places. Web research uses Browser Use and Google; computer tasks use Matrix and OpenAI.")
+                    Text("While active, audio, front-camera images and proximity readings go to Google Gemini. Requested location lookups use Apple and Google Places. Web research and requested Gmail reading use Browser Use and Google; computer tasks use Matrix and OpenAI.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
             }

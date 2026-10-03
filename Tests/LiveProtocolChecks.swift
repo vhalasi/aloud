@@ -46,7 +46,10 @@ struct LiveProtocolChecks {
         _ = try JSONSerialization.data(withJSONObject: reply)
         let researchSetup = LiveProtocol.setup(placesEnabled: true, researchEnabled: true)["setup"] as! [String: Any]
         let researchDeclarations = (researchSetup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]]
-        assert(researchDeclarations.count == 9)
+        assert(researchDeclarations.count == 10)
+        let gmail = researchDeclarations.first { $0["name"] as? String == "read_gmail" }!
+        assert((gmail["parameters"] as! [String: Any])["required"] as? [String] == ["question"])
+        assert(!baseline.contains { $0["name"] as? String == "read_gmail" })
         assert(researchDeclarations.filter { ($0["name"] as? String)?.contains("research") == true }.allSatisfy { $0["behavior"] as? String == "NON_BLOCKING" })
         assert(researchDeclarations.contains { $0["name"] as? String == "run_matrix_task" })
         assert(baseline.contains { $0["name"] as? String == "get_proximity_status" })

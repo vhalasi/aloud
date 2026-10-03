@@ -96,6 +96,28 @@ final class ResearchStub: URLProtocol {
         }
         let matrixAnswer = await service().research(question: "Compute a sum", provider: .matrix)
         assert(matrixAnswer["source"] as? String == "Cloud computer task using Matrix and Codex")
+        ResearchStub.handler = { request in
+            assert(request.url!.path == "/v1/research")
+            id = jobID(request)
+            let body: Data
+            if let data = request.httpBody { body = data }
+            else {
+                let stream = request.httpBodyStream!; stream.open(); defer { stream.close() }
+                var data = Data(); var bytes = [UInt8](repeating: 0, count: 1024)
+                while stream.hasBytesAvailable {
+                    let count = stream.read(&bytes, maxLength: bytes.count)
+                    if count <= 0 { break }; data.append(contentsOf: bytes.prefix(count))
+                }
+                body = data
+            }
+            let payload = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+            assert(payload["mode"] as? String == "gmail")
+            assert((payload["prompt"] as! String).contains("browser computer use"))
+            assert(!(payload["prompt"] as! String).contains("location snapshot"))
+            return (200, ["id": id, "status": "succeeded", "result": "Gmail inbox available"])
+        }
+        let gmailAnswer = await service().research(question: "Is my Gmail connected?", location: ["latitude": 59.3], provider: .gmail)
+        assert(gmailAnswer["source"] as? String == "Gmail using Browser Use computer use")
         print("Matrix research checks passed: retry identity, result delivery, authentication errors, one-job limit, cancellation, timeout and stale-session suppression")
     }
 }

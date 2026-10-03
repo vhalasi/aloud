@@ -195,7 +195,7 @@ final class GeminiLiveClient: ObservableObject {
                 enqueue(LiveProtocol.toolResponse(call, result: proximityReporter.currentContext(now: ProcessInfo.processInfo.systemUptime)))
                 continue
             }
-            if ["research_surroundings", "run_matrix_task", "get_research_status", "cancel_research"].contains(call.name) {
+            if ["research_surroundings", "run_matrix_task", "read_gmail", "get_research_status", "cancel_research"].contains(call.name) {
                 handleResearch(call, token: token)
                 continue
             }
@@ -322,7 +322,10 @@ final class GeminiLiveClient: ObservableObject {
         isResearching = true
         researchTask = Task { [weak self] in
             guard let self else { return }
-            let result = await self.performResearch(call.arguments, provider: call.name == "run_matrix_task" ? .matrix : .browserUse)
+            let provider: MatrixResearchService.Provider = call.name == "read_gmail" ? .gmail : call.name == "run_matrix_task" ? .matrix : .browserUse
+            var arguments = call.arguments
+            if provider == .gmail { arguments["include_location"] = false }
+            let result = await self.performResearch(arguments, provider: provider)
             guard self.generation == token, self.isConnected, self.researchCallID == call.id else { return }
             self.researchTask = nil
             self.researchCallID = nil

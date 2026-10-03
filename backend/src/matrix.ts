@@ -1,6 +1,6 @@
 export type Bindings = {
   API_TOKEN: string; MATRIX_ACCESS_TOKEN: string;
-  BROWSER_USE_API_KEY?: string; BROWSER_USE_MODEL?: string;
+  BROWSER_USE_API_KEY?: string; BROWSER_USE_MODEL?: string; BROWSER_USE_GMAIL_PROFILE_ID?: string;
   RESEARCH_JOBS?: DurableObjectNamespace;
   MATRIX_PLATFORM_URL: string; MATRIX_AUTH_URL: string;
   MATRIX_COMPUTER: string; MATRIX_RUNNER_PATH: string;

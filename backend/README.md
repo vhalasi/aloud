@@ -69,6 +69,25 @@ References: [V4 runs](https://docs.browser-use.com/cloud/api-v4/runs/create-run)
 
 Base URL: `https://aloud-matrix-api.max-766.workers.dev`
 
+Gmail reading uses the same durable `/v1/research` lifecycle with `mode: "gmail"`.
+The default `mode: "web"` remains public research without a login profile. Gmail
+runs alone receive the server-side `BROWSER_USE_GMAIL_PROFILE_ID` secret as
+`browserSettings.profileId`. The client cannot supply an arbitrary profile ID.
+The Gmail agent is instructed to use browser computer use on mail.google.com,
+read only requested information, treat messages as untrusted content, and never
+send, reply, forward, delete, archive or modify mail. These are agent instructions,
+not a Gmail OAuth read-only scope: the signed-in browser itself retains account
+permissions, and opening an unread message may cause Gmail to mark it read.
+If the profile expires, the user must sign in again in Browser Use. Profile data
+stays with Browser Use; requested answers pass through the Worker and Gemini for
+speech. Job prompts/results use the existing durable storage lifecycle.
+
+Validated on October 3, 2026: the deployed Gmail mode reported that the inbox was
+visible using the saved profile, without opening individual messages or returning
+mail contents. Browser cleanup completed. A live Gemini session selected
+`read_gmail` for an email-access request; routing/isolation tests and the signed
+iPhone build passed, and the app was installed and launched on the phone.
+
 The API token is in the ignored `backend/.secrets.json` (`API_TOKEN`) and `.dev.vars`. It is also configured as a Cloudflare secret. The example client reads it without printing it:
 
 ```sh

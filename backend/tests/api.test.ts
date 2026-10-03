@@ -24,6 +24,26 @@ test('auth fails closed without calling Matrix; health remains public', async ()
   assert.equal((await app.request('/health', {}, env)).status, 200);
   assert.equal(calls.length, 0);
 });
+test('Gmail mode is explicit, requires a server profile, and rejects client profile selection', async () => {
+  const {app} = fixture();
+  const submissions: any[] = [];
+  const browserEnv = {...env, BROWSER_USE_API_KEY:'browser-secret', RESEARCH_JOBS: {
+    idFromName: (name: string) => name,
+    get: () => ({fetch: async (_url: string, options: RequestInit) => {
+      const body = JSON.parse(options.body as string); submissions.push(body);
+      return Response.json({id:body.id, status:'queued'});
+    }})
+  } as unknown as DurableObjectNamespace};
+  const request = (body: object, profile?: string) => app.request('/v1/research', {
+    method:'POST', headers:{Authorization:`Bearer ${env.API_TOKEN}`, 'Content-Type':'application/json', 'Idempotency-Key':'gmail-test-123'}, body:JSON.stringify(body)
+  }, {...browserEnv, BROWSER_USE_GMAIL_PROFILE_ID:profile});
+  assert.equal((await request({prompt:'hello'})).status,202);
+  assert.equal(submissions[0].mode,'web');
+  assert.equal((await request({prompt:'hello',mode:'gmail'})).status,503);
+  assert.equal((await request({prompt:'hello',mode:'gmail'},'server-profile')).status,202);
+  assert.equal(submissions[1].mode,'gmail');
+  assert.equal((await request({prompt:'hello',mode:'gmail',profileId:'other'},'server-profile')).status,400);
+});
 test('validates body and generates stable idempotent dispatch IDs', async () => {
   const {request, calls} = fixture();
   for (const body of [{prompt:''}, {prompt:'x', timeoutSeconds: 601}, {prompt:'x', arbitrary:'y'}]) {

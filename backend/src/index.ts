@@ -9,6 +9,7 @@ export { ResearchJob } from './browser-use';
 
 const input = z.object({prompt: z.string().trim().min(1).max(20_000),
   timeoutSeconds: z.number().int().min(10).max(600).default(180)}).strict();
+const browserInput = input.extend({mode: z.enum(['web', 'gmail']).default('web')});
 const jobPattern = /^job_[a-f0-9]{32}$/;
 
 export function createApp(factory: (env: Bindings) => Executor = env => new Matrix(env)) {
@@ -29,8 +30,9 @@ export function createApp(factory: (env: Bindings) => Executor = env => new Matr
     if (!c.env.RESEARCH_JOBS || !c.env.BROWSER_USE_API_KEY) return c.json({error: 'browser_use_not_configured'}, 503);
     let json: unknown;
     try { json = await c.req.json(); } catch { return c.json({error: 'invalid_json'}, 400); }
-    const parsed = input.safeParse(json);
+    const parsed = browserInput.safeParse(json);
     if (!parsed.success) return c.json({error: 'invalid_job'}, 400);
+    if (parsed.data.mode === 'gmail' && !c.env.BROWSER_USE_GMAIL_PROFILE_ID) return c.json({error: 'gmail_profile_not_configured'}, 503);
     const key = c.req.header('Idempotency-Key');
     if (!key || !/^[a-zA-Z0-9_-]{8,128}$/.test(key)) return c.json({error: 'invalid_idempotency_key'}, 400);
     const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key));
