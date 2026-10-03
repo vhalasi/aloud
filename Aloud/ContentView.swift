@@ -1,215 +1,359 @@
 import SwiftUI
 
+private enum AloudStyle {
+    static let background = Color(red: 0.035, green: 0.065, blue: 0.07)
+    static let surface = Color(red: 0.075, green: 0.11, blue: 0.12)
+    static let ink = Color(red: 0.95, green: 0.96, blue: 0.91)
+    static let muted = Color(red: 0.63, green: 0.71, blue: 0.69)
+    static let mint = Color(red: 0.70, green: 0.96, blue: 0.82)
+    static let amber = Color(red: 1, green: 0.75, blue: 0.39)
+    static let coral = Color(red: 1, green: 0.49, blue: 0.37)
+}
+
 struct ContentView: View {
     @StateObject private var monitor = ProximityMonitor()
     @StateObject private var live = GeminiLiveClient()
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var showingDetails = false
 
-    private var signal: ProximitySignal? {
-        monitor.distance.flatMap { ProximitySignal.at(distance: $0) }
+    // Debug-only visual fixtures never start a camera, microphone, network session or haptic.
+    private var previewMode: String? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let index = args.firstIndex(of: "--ui-preview"), args.count > index + 1 { return args[index + 1] }
+        #endif
+        return nil
     }
+    private var active: Bool { previewMode.map { $0 != "idle" } ?? live.isActive }
+    private var connected: Bool { previewMode.map { $0 != "idle" && $0 != "connecting" } ?? live.isConnected }
+    private var speaking: Bool { previewMode.map { $0 == "speaking" || $0 == "near" } ?? live.isSpeaking }
+    private var level: Double { previewMode == nil ? live.outputLevel : speaking ? 0.65 : 0 }
+    private var distance: Float? { previewMode == "near" ? 0.5 : previewMode == "speaking" ? 1.4 : previewMode == "listening" ? 2.1 : monitor.distance }
+    private var proximity: Double { distance.map { max(0, min(1, (2.5 - Double($0)) / 2.1)) } ?? 0 }
+    private var voiceTitle: String { !active ? "Your surroundings,\nspoken." : !connected ? "Getting ready…" : speaking ? "Aloud is speaking" : "I’m listening" }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Text("Aloud")
-                    .font(.largeTitle.bold())
-                    .accessibilityAddTraits(.isHeader)
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("See with Aloud").font(.title2.bold())
-                    Text(live.status).font(.callout)
-                    if live.isActive {
-                        Button("Stop AI", systemImage: "mic.slash.fill") { live.stop() }
-                            .buttonStyle(.borderedProminent)
-                    } else {
-                        Button("Start AI", systemImage: "mic.fill") { live.start() }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(!live.hasKey || !monitor.usesTrueDepth)
+        GeometryReader { geometry in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    header
+                    Spacer(minLength: 24)
+                    VStack(spacing: 14) {
+                        Text(!active ? "A LITTLE MORE INDEPENDENCE" : !connected ? "CONNECTING" : speaking ? "HERE WITH YOU" : "VOICE & AWARENESS")
+                            .font(.system(.caption2, design: .monospaced).weight(.medium))
+                            .tracking(2.4)
+                            .foregroundStyle(AloudStyle.muted)
+                        Text(voiceTitle)
+                            .font(.system(active ? .title : .largeTitle, design: .serif).weight(.medium))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(AloudStyle.ink)
+                            .contentTransition(.opacity)
+                            .accessibilityAddTraits(.isHeader)
                     }
-                    if !live.hasKey {
-                        Text("The developer needs to add the API key and rebuild this app.")
-                            .font(.footnote)
-                    }
-                    if live.isConnected {
-                        Button("Describe surroundings", systemImage: "eye") { live.describe() }
-                            .buttonStyle(.bordered)
-                            .disabled(live.framesSent == 0)
-                        Button("Test speaker", systemImage: "speaker.wave.2.fill") { live.testSpeaker() }
-                            .buttonStyle(.bordered)
-                        Text("Use the volume buttons while AI is on to adjust voice volume.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        DisclosureGroup("Audio details") {
-                            Text(live.audioStatus).font(.caption)
-                        }
-                        Text("Front-camera images sent: \(live.framesSent)").font(.caption)
-                    }
-                    if live.isActive || !live.placesStatus.isEmpty {
-                        Text(live.placesStatus.isEmpty ? "Ask where you are or what is nearby." : live.placesStatus)
-                            .font(.footnote)
-                        Text("Location requests share your position with Gemini and use Apple to look up an address. Nearby searches send your position to Google Places.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    if !live.nearbyPlaces.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Google Maps").font(.system(size: 14)).fixedSize(horizontal: true, vertical: false)
-                            ForEach(live.nearbyPlaces) { place in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    if let url = place.mapsURL {
-                                        Link(place.name, destination: url)
-                                    } else { Text(place.name).bold() }
-                                    Text("About \(place.metres) m in a straight line").font(.caption)
-                                    Text(place.address).font(.caption)
-                                    ForEach(place.attributions, id: \.self) { Text($0).font(.caption2) }
-                                }
-                            }
-                        }
-                    }
-                    if live.hasResearch && live.isActive {
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Web research").font(.headline).accessibilityAddTraits(.isHeader)
-                            Text(live.researchStatus.isEmpty ? "Ask about a building’s history or ask me to look something up." : live.researchStatus)
-                                .font(.callout)
-                            if live.isResearching {
-                                Button("Cancel research", systemImage: "stop.circle") { live.cancelResearch() }
-                                    .buttonStyle(.bordered)
-                            }
-                            if !live.researchResult.isEmpty {
-                                DisclosureGroup("Research details and sources") {
-                                    Text(live.researchResult).font(.callout).textSelection(.enabled)
-                                }
-                            }
-                            Text("Research sends your question, and your location when needed, to Browser Use and Google. Computer tasks use Matrix and OpenAI. You can keep talking while it works.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                        }
-                    }
-                    if !live.heard.isEmpty {
-                        Text("You: \(live.heard)").font(.callout).foregroundStyle(.secondary)
-                    }
-                    if !live.transcript.isEmpty {
-                        Text(live.transcript).font(.body).textSelection(.enabled)
-                    }
-                    Text("While AI is on, microphone audio, front-camera images and proximity readings are sent to Google Gemini. Hold the phone upright, screen facing what you want described.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                }
-                .controlSize(.large)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(20)
-                .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+                    .padding(.top, 12)
 
-                Text("Feel what’s ahead.")
-                    .font(.title2.weight(.semibold))
-                Text(monitor.cameraInstruction)
-                Text("Pulses get faster and stronger as a surface gets closer.")
-
-                VStack(spacing: 16) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 44, weight: .semibold))
-                        .symbolEffect(.bounce, value: monitor.pulseCount)
+                    VoiceOrb(active: active, speaking: speaking, level: level, reduceMotion: reduceMotion)
+                        .frame(height: typeSize.isAccessibilitySize ? 200 : min(geometry.size.height * 0.39, 330))
                         .accessibilityHidden(true)
-                    Text(monitor.distance.map { String(format: "%.1f m", $0) } ?? "—")
-                        .font(.system(.largeTitle, design: .rounded).bold())
-                        .monospacedDigit()
-                        .accessibilityLabel(monitor.isDemo ? "Simulated distance" : "Surface distance")
-                        .accessibilityValue(monitor.distance.map { String(format: "%.1f metres", $0) } ?? "Unavailable")
-                    Text(signal == nil ? "No proximity pulses" : "Closer means faster pulses")
-                        .font(.headline)
-                    Text(monitor.message)
-                        .font(.callout)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(24)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 24))
 
-                Button("Test vibration", systemImage: "waveform.path") { monitor.testVibration() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
-                Text(monitor.hapticStatus)
-                    .font(.callout)
-                Text("If you feel nothing, check Settings → Accessibility → Touch → Vibration.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                if monitor.isDemo {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Demo distance — no camera measurement")
-                            .font(.headline)
-                        Slider(value: $monitor.demoDistance, in: 0.3...3, step: 0.1)
-                            .accessibilityLabel("Demo distance")
-                            .accessibilityValue(String(format: "%.1f metres", monitor.demoDistance))
-                        Text("Move left for closer, faster pulses. The simulator shows pulses but cannot vibrate.")
-                            .font(.callout)
-                    }
-                }
-
-                if monitor.isRunning {
-                    Button("Stop sensing and AI", systemImage: "stop.fill") { live.stop(); monitor.stop() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                } else {
-                    Button("Start sensing", systemImage: "sensor.fill") { monitor.start() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .disabled(!monitor.supportsDepth)
-                    Button("Try demo pulses", systemImage: "hand.tap") { monitor.startDemo() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                }
-
-                if monitor.needsSettings || live.needsSettings {
-                    Button("Open Settings") {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
+                    if active {
+                        ProximityVisual(distance: connected ? distance : nil, active: connected,
+                                        pulseCount: monitor.pulseCount, reduceMotion: reduceMotion)
+                            .padding(.bottom, 18)
+                        if live.isResearching {
+                            Label("Looking that up. You can keep talking.", systemImage: "sparkle.magnifyingglass")
+                                .font(.footnote).foregroundStyle(AloudStyle.muted)
+                                .multilineTextAlignment(.center).padding(.bottom, 10)
                         }
+                    } else {
+                        Text("Listen to the world around you.\nFeel what’s getting closer.")
+                            .font(.body).foregroundStyle(AloudStyle.muted)
+                            .multilineTextAlignment(.center).lineSpacing(4)
+                            .padding(.bottom, 24)
                     }
+                    Spacer(minLength: 12)
+                    controls
                 }
-
-                Text("Prototype: senses only the centre of the camera view. Silence does not mean the path is clear. Test while stationary with a sighted helper; do not rely on this for navigation.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, 28)
+                .padding(.top, 8)
+                .padding(.bottom, 18)
+                .frame(minHeight: geometry.size.height)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(24)
         }
-        .onAppear {
-            #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--audio-recovery-check") {
-                live.runAudioRecoveryCheck()
-            }
-            #endif
-            live.onReadyForCamera = {
-                if !monitor.isRunning || monitor.isDemo { monitor.start() }
-            }
-            live.onStreamingChanged = { streaming in
-                if streaming {
-                    monitor.setProximityHandler { [weak live] snapshot in
-                        live?.sendProximity(snapshot)
-                    }
-                    monitor.setVideoHandler { [weak live] jpeg in
-                        Task { @MainActor in live?.sendFrame(jpeg) }
-                    }
-                } else {
-                    monitor.setVideoHandler(nil)
-                    monitor.setProximityHandler(nil)
+        .background {
+            ZStack {
+                AloudStyle.background
+                RadialGradient(colors: [AloudStyle.mint.opacity(active ? 0.055 : 0.035), .clear],
+                               center: .center, startRadius: 0, endRadius: 340)
+                if active && proximity > 0 {
+                    LinearGradient(colors: [.clear, AloudStyle.coral.opacity(proximity * 0.12)], startPoint: .center, endPoint: .bottom)
                 }
-            }
+            }.ignoresSafeArea()
+        }
+        .preferredColorScheme(.dark)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: active)
+        .sheet(isPresented: $showingDetails) { details }
+        .onAppear(perform: configureSession)
+        .onChange(of: live.isActive) { previous, current in
+            // One session: failure, interruption and Stop return both subsystems to idle.
+            if previous && !current { monitor.stop() }
         }
         .onChange(of: monitor.isRunning) { _, running in
-            if !running && live.isConnected { live.stop(message: "Camera stopped. Tap Start AI to reconnect.") }
+            if !running && live.isConnected { live.stop(message: "Camera stopped. Tap Start to reconnect.") }
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { monitor.applicationBecameActive() }
-            // Permission prompts temporarily make the app inactive. Stop an active
-            // session then, but allow the first permission request to complete.
             if phase == .background || (phase == .inactive && monitor.isRunning) {
                 if phase == .background || live.isConnected { live.stop() }
                 monitor.stop()
             }
         }
-        .onDisappear { live.stop(); monitor.stop() }
+        .onDisappear { stopSession() }
+    }
+
+    private var header: some View {
+        HStack {
+            HStack(spacing: 9) {
+                Image(systemName: "waveform").font(.system(size: 21, weight: .medium)).foregroundStyle(AloudStyle.mint)
+                Text("aloud").font(.system(size: 29, weight: .semibold, design: .rounded)).tracking(-1)
+            }.accessibilityElement(children: .ignore).accessibilityLabel("Aloud")
+            Spacer()
+            if previewMode != nil { Text("PREVIEW").font(.caption2).foregroundStyle(AloudStyle.muted) }
+            Button { showingDetails = true } label: {
+                Image(systemName: "ellipsis").font(.system(size: 21, weight: .semibold))
+                    .frame(width: 48, height: 48)
+                    .background(.white.opacity(0.055), in: Circle())
+                    .overlay(Circle().strokeBorder(.white.opacity(0.08)))
+            }
+            .foregroundStyle(AloudStyle.ink)
+            .accessibilityLabel("Session details and settings")
+        }.foregroundStyle(AloudStyle.ink)
+    }
+
+    private var controls: some View {
+        VStack(spacing: 16) {
+            if !active && live.status != "AI is off" {
+                Text(live.status).font(.callout).foregroundStyle(AloudStyle.amber)
+                    .multilineTextAlignment(.center)
+            }
+            if active && !connected {
+                Text(live.status).font(.callout).foregroundStyle(AloudStyle.muted).multilineTextAlignment(.center)
+            }
+            Button {
+                guard previewMode == nil else { return }
+                if active { stopSession() } else { live.start() }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: active ? "stop.fill" : "waveform")
+                        .font(.system(size: active ? 16 : 22, weight: .semibold))
+                    Text(active ? connected ? "End session" : "Cancel" : "Start")
+                        .font(.system(.headline, design: .rounded))
+                }
+                .frame(maxWidth: .infinity).frame(minHeight: 66)
+                .background(active ? AloudStyle.surface : AloudStyle.mint, in: Capsule())
+                .overlay(Capsule().strokeBorder(active ? Color.white.opacity(0.15) : .clear))
+                .foregroundStyle(active ? AloudStyle.ink : AloudStyle.background)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(active ? "Stop AI and proximity sensing" : "Start AI and proximity sensing")
+            .accessibilityHint(active ? "Ends the microphone, camera and vibration session." : "Starts the voice assistant, front camera and proximity vibrations.")
+            Text(active ? "Front camera facing forward · You can interrupt" : "Voice + proximity, together")
+                .font(.footnote).foregroundStyle(AloudStyle.muted).multilineTextAlignment(.center)
+        }
+    }
+
+    private var details: some View {
+        NavigationStack {
+            List {
+                Section("Conversation") {
+                    if live.heard.isEmpty && live.transcript.isEmpty { Text("Your conversation will appear here.").foregroundStyle(.secondary) }
+                    if !live.heard.isEmpty { Text("You: \(live.heard)").foregroundStyle(.secondary).textSelection(.enabled) }
+                    if !live.transcript.isEmpty { Text(live.transcript).textSelection(.enabled) }
+                    if live.isConnected {
+                        Button("Describe surroundings", systemImage: "eye") { live.describe() }.disabled(live.framesSent == 0)
+                    }
+                }
+                if live.isResearching || !live.researchStatus.isEmpty || !live.researchResult.isEmpty {
+                    Section("Web research") {
+                        Text(live.researchStatus)
+                        if live.isResearching { Button("Cancel research", role: .destructive) { live.cancelResearch() } }
+                        if !live.researchResult.isEmpty { Text(live.researchResult).textSelection(.enabled) }
+                    }
+                }
+                if !live.nearbyPlaces.isEmpty {
+                    Section("Google Maps") {
+                        ForEach(live.nearbyPlaces) { place in
+                            VStack(alignment: .leading, spacing: 6) {
+                                if let url = place.mapsURL { Link(place.name, destination: url) } else { Text(place.name).bold() }
+                                Text("About \(place.metres) m in a straight line").font(.caption)
+                                Text(place.address).font(.caption)
+                                ForEach(place.attributions, id: \.self) { Text($0).font(.caption2) }
+                            }
+                        }
+                    }
+                }
+                Section("Camera & feedback") {
+                    Text(monitor.cameraInstruction)
+                    Text(monitor.message)
+                    Button("Test vibration", systemImage: "waveform.path") { monitor.testVibration() }
+                    Text(monitor.hapticStatus).font(.caption).foregroundStyle(.secondary)
+                    if live.isConnected {
+                        Button("Test speaker", systemImage: "speaker.wave.2.fill") { live.testSpeaker() }
+                        Text("Use the iPhone volume buttons to adjust the voice.").font(.caption)
+                    }
+                    if monitor.needsSettings || live.needsSettings {
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                        }
+                    }
+                    DisclosureGroup("Diagnostics") {
+                        Text(live.status)
+                        Text(live.audioStatus)
+                        Text("Front-camera images sent: \(live.framesSent)")
+                        if !live.placesStatus.isEmpty { Text(live.placesStatus) }
+                    }.font(.caption)
+                }
+                Section("About this prototype") {
+                    Text("Only the centre of the camera view is measured. No reading does not mean a clear path. This is an awareness aid, not a crossing or navigation safety system.")
+                    Text("While active, audio, front-camera images and proximity readings go to Google Gemini. Requested location lookups use Apple and Google Places. Web research uses Browser Use and Google; computer tasks use Matrix and OpenAI.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+            }
+            .tint(AloudStyle.mint)
+            .navigationTitle("Session details")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingDetails = false } } }
+        }.preferredColorScheme(.dark)
+    }
+
+    private func stopSession() { live.stop(); monitor.stop() }
+
+    private func configureSession() {
+        guard previewMode == nil else { return }
+        live.onReadyForCamera = { if !monitor.isRunning || monitor.isDemo { monitor.start() } }
+        live.onStreamingChanged = { streaming in
+            if streaming {
+                monitor.setProximityHandler { [weak live] snapshot in live?.sendProximity(snapshot) }
+                monitor.setVideoHandler { [weak live] jpeg in Task { @MainActor in live?.sendFrame(jpeg) } }
+            } else {
+                monitor.setVideoHandler(nil)
+                monitor.setProximityHandler(nil)
+            }
+        }
     }
 }
 
-#Preview {
-    ContentView()
+/// A layered, slowly drifting membrane. Voice energy increases its size and deformation.
+private struct VoiceOrb: View {
+    let active: Bool
+    let speaking: Bool
+    let level: Double
+    let reduceMotion: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: reduceMotion || !active)) { timeline in
+            let time = reduceMotion || !active ? 0 : timeline.date.timeIntervalSinceReferenceDate
+            Canvas { context, size in
+                let center = CGPoint(x: size.width / 2, y: size.height / 2)
+                let radius = min(size.width, size.height) * 0.325
+                let energy = reduceMotion ? 0 : level
+                let outer = CGRect(x: center.x - radius * 1.5, y: center.y - radius * 1.5, width: radius * 3, height: radius * 3)
+                context.fill(Path(ellipseIn: outer), with: .radialGradient(
+                    Gradient(colors: [AloudStyle.mint.opacity(active ? 0.10 + energy * 0.10 : 0.06), .clear]),
+                    center: center, startRadius: radius * 0.65, endRadius: radius * 1.5))
+                let colors: [[Color]] = [
+                    [Color(red: 0.25, green: 0.54, blue: 0.66), Color(red: 0.08, green: 0.21, blue: 0.33)],
+                    [Color(red: 0.44, green: 0.77, blue: 0.79), Color(red: 0.14, green: 0.38, blue: 0.56)],
+                    [AloudStyle.mint, Color(red: 0.35, green: 0.64, blue: 0.77)],
+                    [Color(red: 0.91, green: 0.99, blue: 0.86), AloudStyle.mint.opacity(0.45)]
+                ]
+                for layer in 0..<4 {
+                    let phase = time * 0.45 + Double(layer) * 1.7
+                    let scale = 1.08 - Double(layer) * 0.075 + energy * 0.12
+                    let offset = CGPoint(x: center.x + CGFloat(sin(phase * 0.7) * Double(layer) * 3),
+                                         y: center.y - CGFloat(layer) * radius * 0.035)
+                    let path = membrane(center: offset, radius: radius * scale, phase: phase,
+                                        amplitude: active ? 0.035 + energy * 0.10 : 0.025)
+                    context.fill(path, with: .linearGradient(Gradient(colors: colors[layer]),
+                        startPoint: CGPoint(x: center.x - radius, y: center.y - radius),
+                        endPoint: CGPoint(x: center.x + radius * 0.8, y: center.y + radius)))
+                    context.stroke(path, with: .color(.white.opacity(0.13)), lineWidth: 0.7)
+                }
+                let sheen = CGRect(x: center.x - radius * 0.58, y: center.y - radius * 0.78,
+                                   width: radius * 1.16, height: radius * 0.85)
+                context.fill(Path(ellipseIn: sheen), with: .radialGradient(
+                    Gradient(colors: [.white.opacity(0.3), .clear]),
+                    center: CGPoint(x: center.x - radius * 0.2, y: center.y - radius * 0.35),
+                    startRadius: 0, endRadius: radius * 0.68))
+            }
+        }
+    }
+
+    private func membrane(center: CGPoint, radius: Double, phase: Double, amplitude: Double) -> Path {
+        Path { path in
+            for index in 0...160 {
+                let angle = Double(index) / 160 * 2 * Double.pi
+                let wave = sin(angle * 3 + phase) * 0.55 + sin(angle * 5 - phase * 0.7) * 0.3 + cos(angle * 2 + phase * 0.6) * 0.15
+                let r = radius * (1 + wave * amplitude)
+                let point = CGPoint(x: center.x + cos(angle) * r, y: center.y + sin(angle) * r)
+                if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            path.closeSubpath()
+        }
+    }
 }
+
+private struct ProximityVisual: View {
+    let distance: Float?
+    let active: Bool
+    let pulseCount: Int
+    let reduceMotion: Bool
+    @State private var glow = 0.0
+    private var closeness: Double { distance.map { max(0, min(1, (2.5 - Double($0)) / 2.1)) } ?? 0 }
+    private var color: Color { distance == nil ? AloudStyle.muted : distance! < 0.6 ? AloudStyle.coral : distance! < 1.2 ? AloudStyle.amber : AloudStyle.mint }
+    private var title: String { !active ? "Preparing proximity" : distance == nil ? "Depth unavailable" : distance! < 0.6 ? "Very close" : distance! < 1.2 ? "Something nearby" : "Sensing ahead" }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                HStack(spacing: 8) {
+                    Image(systemName: distance == nil ? "viewfinder" : "sensor.fill").font(.caption)
+                    Text(title).font(.subheadline.weight(.medium))
+                }
+                Spacer(minLength: 8)
+                Text(distance.map { String(format: "%.1f m", $0) } ?? "—")
+                    .font(.system(.title3, design: .rounded).weight(.medium)).monospacedDigit()
+            }.foregroundStyle(color)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.09))
+                    if distance != nil {
+                        Capsule().fill(LinearGradient(colors: [color.opacity(0.35), color], startPoint: .leading, endPoint: .trailing))
+                            .frame(width: max(10, geometry.size.width * closeness))
+                            .shadow(color: color.opacity(0.5), radius: reduceMotion ? 0 : 6 + (glow * 7))
+                    }
+                }
+            }.frame(height: 7)
+            Text(distance == nil ? "No reading doesn’t mean a clear path." : "Camera-centred distance · Closer means stronger pulses")
+                .font(.caption).foregroundStyle(AloudStyle.muted)
+                .multilineTextAlignment(.center)
+        }
+        .padding(20)
+        .background(color.opacity(0.035 + closeness * 0.045), in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(color.opacity(0.14 + closeness * 0.2), lineWidth: 1))
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: closeness)
+        .task(id: pulseCount) {
+            guard !reduceMotion else { return }
+            withAnimation(.easeOut(duration: 0.06)) { glow = 1 }
+            do { try await Task.sleep(for: .milliseconds(70)) } catch { return }
+            withAnimation(.easeOut(duration: 0.2)) { glow = 0 }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(distance.map { String(format: "Surface approximately %.1f metres from the camera", $0) } ?? "Distance unavailable. This does not mean the path is clear.")
+    }
+}
+
+#Preview { ContentView() }

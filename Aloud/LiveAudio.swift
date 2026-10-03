@@ -4,6 +4,7 @@ import os
 /// Lifecycle and playback run on main. The input tap owns its converter.
 final class LiveAudio {
     var onStatus: ((String) -> Void)?
+    var onPlaybackLevel: ((Double, Bool) -> Void)?
     var onFailure: (() -> Void)?
     private struct PendingBuffer {
         let id = UUID()
@@ -12,6 +13,17 @@ final class LiveAudio {
     private var pendingBuffers: [PendingBuffer] = []
     private var inputHandler: ((Data) -> Void)?
     private var health = AudioPlaybackHealth()
+    private struct OutputSample {
+        var level: Double = 0
+        var time: TimeInterval = 0
+        var generation = UUID()
+    }
+    private let outputSample = OSAllocatedUnfairLock(initialState: OutputSample())
+    private var meterTimer: DispatchSourceTimer?
+    private var hasOutputTap = false
+    private var meterGeneration = UUID()
+    private var smoothedLevel = 0.0
+    private var lastVoiceTime: TimeInterval = -.infinity
     private var watchdog: DispatchSourceTimer?
     private var configurationObserver: NSObjectProtocol?
     private var recoveryCount = 0
@@ -50,6 +62,11 @@ final class LiveAudio {
         timer.setEventHandler { [weak self] in self?.checkPlayback() }
         watchdog = timer
         timer.resume()
+        let meter = DispatchSource.makeTimerSource(queue: .main)
+        meter.schedule(deadline: .now(), repeating: 0.05)
+        meter.setEventHandler { [weak self] in self?.reportPlaybackLevel() }
+        meterTimer = meter
+        meter.resume()
         reportStatus(force: true)
     }
 
@@ -88,6 +105,20 @@ final class LiveAudio {
         let mixer = engine.mainMixerNode
         mixer.outputVolume = 1
         engine.connect(player, to: mixer, format: playbackFormat)
+        // Meter samples rendered by the player, not chunks arriving ahead of playback.
+        let sampleStore = outputSample
+        meterGeneration = UUID()
+        let renderGeneration = meterGeneration
+        player.installTap(onBus: 0, bufferSize: 1024, format: playbackFormat) { buffer, _ in
+            guard let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 else { return }
+            var energy: Float = 0
+            for index in 0..<Int(buffer.frameLength) { energy += samples[index] * samples[index] }
+            let rms = sqrt(Double(energy) / Double(buffer.frameLength))
+            let level = min(1, max(0, rms * 5))
+            let now = ProcessInfo.processInfo.systemUptime
+            sampleStore.withLock { $0 = OutputSample(level: level, time: now, generation: renderGeneration) }
+        }
+        hasOutputTap = true
         engine.connect(mixer, to: engine.outputNode, format: engine.outputNode.inputFormat(forBus: 0))
         input.installTap(onBus: 0, bufferSize: 2048, format: sourceFormat) { buffer, _ in
             let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * 16_000 / sourceFormat.sampleRate)) + 32
@@ -214,6 +245,25 @@ final class LiveAudio {
         try play(pcm)
     }
 
+    private func reportPlaybackLevel() {
+        let now = ProcessInfo.processInfo.systemUptime
+        let sample = outputSample.withLock { $0 }
+        let rendering = engine?.isRunning == true && player?.isPlaying == true &&
+            sample.generation == meterGeneration && now - sample.time < 0.2 && !pendingBuffers.isEmpty
+        let target = rendering ? sample.level : 0
+        if target > 0.025 { lastVoiceTime = now }
+        smoothedLevel += (target - smoothedLevel) * (target > smoothedLevel ? 0.6 : 0.25)
+        if smoothedLevel < 0.005 { smoothedLevel = 0 }
+        onPlaybackLevel?(smoothedLevel, rendering && now - lastVoiceTime < 0.3)
+    }
+
+    private func clearPlaybackLevel() {
+        outputSample.withLock { $0.time = 0; $0.level = 0 }
+        smoothedLevel = 0
+        lastVoiceTime = -.infinity
+        onPlaybackLevel?(0, false)
+    }
+
     private func reportStatus(force: Bool = false) {
         guard engine != nil else { return }
         let now = ProcessInfo.processInfo.systemUptime
@@ -236,6 +286,7 @@ final class LiveAudio {
         pendingBuffers.removeAll()
         playbackGeneration = UUID()
         queuedFrames = 0
+        clearPlaybackLevel()
         player?.stop()
         if engine?.isRunning == true { player?.play() }
         reportStatus(force: true)
@@ -246,6 +297,9 @@ final class LiveAudio {
         configurationObserver = nil
         if hasTap { engine?.inputNode.removeTap(onBus: 0) }
         hasTap = false
+        if hasOutputTap { player?.removeTap(onBus: 0) }
+        hasOutputTap = false
+        meterGeneration = UUID()
         player?.stop()
         engine?.stop()
         if let player { engine?.detach(player) }
@@ -255,6 +309,8 @@ final class LiveAudio {
 
     func stop() {
         watchdog?.cancel(); watchdog = nil
+        meterTimer?.cancel(); meterTimer = nil
+        clearPlaybackLevel()
         volumeObservation = nil
         inputHandler = nil
         playbackGeneration = UUID()
@@ -263,42 +319,6 @@ final class LiveAudio {
         tearDownGraph()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
-
-    #if DEBUG
-    /// Opt-in device check: --audio-recovery-check. No microphone data leaves the phone.
-    @MainActor func runRecoveryCheck() async -> Bool {
-        defer { stop() }
-        do {
-            try start { _ in }
-            try testSpeaker()
-            try await Task.sleep(for: .milliseconds(150))
-            engine?.pause()
-            for _ in 0..<80 {
-                if recoveryCount >= 1 && completedBuffers >= 1 && queuedFrames == 0 { break }
-                try await Task.sleep(for: .milliseconds(100))
-            }
-            print("AUDIO_CHECK_ENGINE recoveries=\(recoveryCount) played=\(completedBuffers) queued=\(queuedFrames) running=\(engine?.isRunning == true)")
-            guard recoveryCount >= 1, completedBuffers >= 1, queuedFrames == 0 else { return false }
-            let before = completedBuffers
-            try testSpeaker()
-            player?.pause()
-            for _ in 0..<80 {
-                if recoveryCount >= 2 && completedBuffers > before && queuedFrames == 0 { break }
-                try await Task.sleep(for: .milliseconds(100))
-            }
-            print("AUDIO_CHECK_PLAYER recoveries=\(recoveryCount) played=\(completedBuffers) queued=\(queuedFrames) running=\(engine?.isRunning == true)")
-            guard recoveryCount >= 2, completedBuffers > before, queuedFrames == 0 else { return false }
-            // Cancelling speech must discard queued samples, including during recovery.
-            try testSpeaker()
-            interrupt(countAsInterruption: false)
-            try await Task.sleep(for: .seconds(1))
-            return queuedFrames == 0 && pendingBuffers.isEmpty && engine?.isRunning == true
-        } catch {
-            print("AUDIO_CHECK_ERROR domain=\((error as NSError).domain) code=\((error as NSError).code)")
-            return false
-        }
-    }
-    #endif
 
     private enum AudioError: Error { case unavailable, backlog }
 }

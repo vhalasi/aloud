@@ -9,6 +9,8 @@ final class GeminiLiveClient: ObservableObject {
     @Published private(set) var status = "AI is off"
     @Published private(set) var transcript = ""
     @Published private(set) var heard = ""
+    @Published private(set) var outputLevel: Double = 0
+    @Published private(set) var isSpeaking = false
     @Published private(set) var framesSent = 0
     @Published private(set) var audioStatus = "Start AI to enable voice."
     @Published private(set) var needsSettings = false
@@ -60,7 +62,11 @@ final class GeminiLiveClient: ObservableObject {
         }
         places.onResults = { [weak self] results in self?.nearbyPlaces = results }
         audio.onFailure = { [weak self] in
-            self?.stop(message: "Speaker could not recover. Tap Start AI to restart voice.")
+            self?.stop(message: "Speaker could not recover. Tap Start to restart voice.")
+        }
+        audio.onPlaybackLevel = { [weak self] level, speaking in
+            self?.outputLevel = level
+            if self?.isSpeaking != speaking { self?.isSpeaking = speaking }
         }
         audio.onStatus = { [weak self] text in self?.audioStatus = text }
         for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
@@ -78,23 +84,11 @@ final class GeminiLiveClient: ObservableObject {
                 }
                 Task { @MainActor in
                     guard let self, self.isConnected else { return }
-                    self.stop(message: "Audio interrupted or changed. Tap Start AI to reconnect.")
+                    self.stop(message: "Audio interrupted or changed. Tap Start to reconnect.")
                 }
             })
         }
     }
-
-    #if DEBUG
-    func runAudioRecoveryCheck() {
-        guard !isActive else { return }
-        Task { @MainActor in
-            status = "Checking speaker recovery…"
-            let passed = await audio.runRecoveryCheck()
-            status = passed ? "Speaker recovery check passed" : "Speaker recovery check failed"
-            print("ALOUD_AUDIO_RECOVERY_CHECK \(passed ? "PASS" : "FAIL")")
-        }
-    }
-    #endif
 
     func start() {
         guard !isActive else { return }
@@ -222,7 +216,7 @@ final class GeminiLiveClient: ObservableObject {
             return
         }
         if event.goingAway {
-            stop(message: "Live session reached its connection limit. Tap Start AI for a new session.")
+            stop(message: "Live session reached its connection limit. Tap Start for a new session.")
             return
         }
         if event.ready && !isConnected {
@@ -249,7 +243,7 @@ final class GeminiLiveClient: ObservableObject {
                     try? await Task.sleep(for: .seconds(2))
                     guard !Task.isCancelled, let self, self.generation == token, self.isConnected else { return }
                     if ProcessInfo.processInfo.systemUptime - self.lastCameraFrame > 8 {
-                        self.stop(message: "Front-camera images stopped. Tap Start AI to try again.")
+                        self.stop(message: "Front-camera images stopped. Tap Start to try again.")
                         return
                     }
                 }
@@ -273,7 +267,7 @@ final class GeminiLiveClient: ObservableObject {
             do {
                 for data in event.audio { try audio.play(data) }
             } catch {
-                stop(message: "Voice playback failed. Tap Start AI to restart the speaker.")
+                stop(message: "Voice playback failed. Tap Start to restart the speaker.")
                 return
             }
         }
@@ -376,7 +370,7 @@ final class GeminiLiveClient: ObservableObject {
     private func enqueue(_ value: [String: Any]) {
         guard let socket, let data = try? JSONSerialization.data(withJSONObject: value),
               let string = String(data: data, encoding: .utf8) else { return }
-        guard pending.count < 100 else { stop(message: "Network is too slow for live audio. Tap Start AI to retry."); return }
+        guard pending.count < 100 else { stop(message: "Network is too slow for live audio. Tap Start to retry."); return }
         pending.append(string)
         guard sendTask == nil else { return }
         let token = generation
