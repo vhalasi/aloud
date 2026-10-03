@@ -11,6 +11,7 @@ final class LiveAudio {
         let buffer: AVAudioPCMBuffer
     }
     private var pendingBuffers: [PendingBuffer] = []
+    var hasPendingPlayback: Bool { !pendingBuffers.isEmpty }
     private var inputHandler: ((Data) -> Void)?
     private var health = AudioPlaybackHealth()
     private struct OutputSample {

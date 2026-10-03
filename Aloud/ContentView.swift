@@ -28,6 +28,7 @@ struct ContentView: View {
         return nil
     }
     private var active: Bool { previewMode.map { $0 != "idle" } ?? live.isActive }
+    private var inverted: Bool { necklaceMode && active }
     private var connected: Bool { previewMode.map { $0 != "idle" && $0 != "connecting" } ?? live.isConnected }
     private var speaking: Bool { previewMode.map { $0 == "speaking" || $0 == "near" } ?? live.isSpeaking }
     private var level: Double { previewMode == nil ? live.outputLevel : speaking ? 0.65 : 0 }
@@ -97,11 +98,11 @@ struct ContentView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: active)
         // Rotate within the safe area: controls remain clear of the camera cutout
         // and home indicator, including on phones without upside-down autorotation.
-        .rotationEffect(.degrees(necklaceMode ? 180 : 0))
+        .rotationEffect(.degrees(inverted ? 180 : 0))
         .background(AloudStyle.background.ignoresSafeArea())
         .sheet(isPresented: $showingDetails) {
             details
-                .rotationEffect(.degrees(necklaceMode ? 180 : 0))
+                .rotationEffect(.degrees(inverted ? 180 : 0))
                 .presentationDragIndicator(.hidden)
         }
         .onAppear(perform: configureSession)
@@ -206,8 +207,8 @@ struct ContentView: View {
                 }
                 Section("Camera & feedback") {
                     Toggle("Necklace mode", isOn: $necklaceMode)
-                        .accessibilityHint("Rotates the interface and camera images for wearing the phone upside down.")
-                    Text("Wear the phone with its charging port at the top. Turn off Necklace mode for upright handheld use.")
+                        .accessibilityHint("Rotates the live interface and camera images for wearing the phone upside down. The idle screen stays upright.")
+                    Text("The screen flips after Start and returns upright when the session ends. Wear the phone with its charging port at the top. Turn off Necklace mode for upright handheld use.")
                         .font(.caption).foregroundStyle(.secondary)
                     Text(monitor.cameraInstruction)
                     Text(monitor.message)
@@ -226,6 +227,7 @@ struct ContentView: View {
                         Text(live.status)
                         Text(live.audioStatus)
                         Text("Front-camera images sent: \(live.framesSent)")
+                        Text("Automatic scene reviews: \(live.sceneReviewsSent)")
                         if !live.placesStatus.isEmpty { Text(live.placesStatus) }
                     }.font(.caption)
                 }

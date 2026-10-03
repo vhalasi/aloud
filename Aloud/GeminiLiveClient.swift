@@ -12,6 +12,7 @@ final class GeminiLiveClient: ObservableObject {
     @Published private(set) var outputLevel: Double = 0
     @Published private(set) var isSpeaking = false
     @Published private(set) var framesSent = 0
+    @Published private(set) var sceneReviewsSent = 0
     @Published private(set) var audioStatus = "Start AI to enable voice."
     @Published private(set) var needsSettings = false
 
@@ -51,6 +52,7 @@ final class GeminiLiveClient: ObservableObject {
     private var proximityReporter = ProximityReporter()
     private var greetingComplete = false
     private var modelIsResponding = false
+    private var sceneReviewCadence = SceneReviewCadence()
     private var newOutputTurn = true
     private var newInputTurn = true
 
@@ -173,6 +175,7 @@ final class GeminiLiveClient: ObservableObject {
     }
 
     private func handle(_ event: LiveProtocol.Event, token: UUID) throws {
+        if !event.toolCalls.isEmpty { modelIsResponding = true }
         for id in event.cancelledToolIDs {
             toolTasks.removeValue(forKey: id)?.cancel()
             if researchCallID == id {
@@ -183,6 +186,11 @@ final class GeminiLiveClient: ObservableObject {
         for call in event.toolCalls {
             guard !handledToolIDs.contains(call.id) else { continue }
             handledToolIDs.insert(call.id)
+            if call.name == "scene_review_complete" {
+                // Acknowledge without asking the model for another spoken turn.
+                enqueue(LiveProtocol.toolResponse(call, result: ["acknowledged": true], scheduling: "SILENT"))
+                continue
+            }
             if call.name == "get_proximity_status" {
                 enqueue(LiveProtocol.toolResponse(call, result: proximityReporter.currentContext(now: ProcessInfo.processInfo.systemUptime)))
                 continue
@@ -225,6 +233,7 @@ final class GeminiLiveClient: ObservableObject {
                 try audio.start { [weak self] data in
                     Task { @MainActor in
                         guard let self, self.generation == token, self.isConnected else { return }
+                        self.sceneReviewCadence.observeAudio(data, now: ProcessInfo.processInfo.systemUptime)
                         self.enqueue(LiveProtocol.media(data, mimeType: "audio/pcm;rate=16000", kind: "audio"))
                     }
                 }
@@ -234,6 +243,7 @@ final class GeminiLiveClient: ObservableObject {
             }
             isConnected = true
             status = "Live · front camera + microphone"
+            modelIsResponding = true
             enqueue(LiveProtocol.greet())
             onStreamingChanged?(true)
             onReadyForCamera?()
@@ -251,8 +261,14 @@ final class GeminiLiveClient: ObservableObject {
         }
         if event.interrupted {
             modelIsResponding = false
+            sceneReviewCadence.noteInput(now: ProcessInfo.processInfo.systemUptime)
             audio.interrupt()
             newOutputTurn = true
+        }
+        if event.inputActivity {
+            // Transcripts may arrive after turnComplete; don't latch the session
+            // busy on an out-of-order transcript. Give the reply time to begin.
+            sceneReviewCadence.noteInput(now: ProcessInfo.processInfo.systemUptime, quietPeriod: 3)
         }
         if let text = event.inputText {
             if newInputTurn { heard = ""; newInputTurn = false }
@@ -274,6 +290,7 @@ final class GeminiLiveClient: ObservableObject {
         if event.turnComplete {
             newOutputTurn = true; newInputTurn = true
             greetingComplete = true; modelIsResponding = false
+            sceneReviewCadence.turnFinished(now: ProcessInfo.processInfo.systemUptime)
         }
     }
 
@@ -341,8 +358,10 @@ final class GeminiLiveClient: ObservableObject {
         proximityReporter.update(snapshot)
         // Coalesce while speaking or congested; send a fresh reading when the turn finishes.
         // Local vibration remains immediate and never depends on this path.
-        guard greetingComplete, !modelIsResponding, pending.count < 5,
+        guard greetingComplete, !modelIsResponding, !sceneReviewCadence.awaitingTurn,
+              !audio.hasPendingPlayback, pending.count < 5,
               let event = proximityReporter.nextEvent(now: ProcessInfo.processInfo.systemUptime) else { return }
+        modelIsResponding = true
         enqueue(LiveProtocol.proximity(event))
     }
 
@@ -352,6 +371,16 @@ final class GeminiLiveClient: ObservableObject {
         guard pending.count < 10 else { return }
         enqueue(LiveProtocol.media(jpeg, mimeType: "image/jpeg", kind: "video"))
         framesSent += 1
+        // Driven by accepted camera frames, never a timer using an old image.
+        // All text triggers share the turn gate so reviews cannot interrupt warnings.
+        let now = ProcessInfo.processInfo.systemUptime
+        if sceneReviewCadence.beginIfReady(now: now, frameTime: lastCameraFrame,
+            greetingComplete: greetingComplete, modelBusy: modelIsResponding || !toolTasks.isEmpty,
+            playbackBusy: audio.hasPendingPlayback, queuedMessages: pending.count) {
+            modelIsResponding = true
+            sceneReviewsSent += 1
+            enqueue(LiveProtocol.sceneReview())
+        }
     }
 
     func testSpeaker() {
@@ -364,6 +393,7 @@ final class GeminiLiveClient: ObservableObject {
         guard isConnected, framesSent > 0 else { return }
         audio.interrupt(countAsInterruption: false)
         newOutputTurn = true
+        modelIsResponding = true
         enqueue(LiveProtocol.describe())
     }
 
@@ -371,6 +401,11 @@ final class GeminiLiveClient: ObservableObject {
         guard let socket, let data = try? JSONSerialization.data(withJSONObject: value),
               let string = String(data: data, encoding: .utf8) else { return }
         guard pending.count < 100 else { stop(message: "Network is too slow for live audio. Tap Start to retry."); return }
+        if let responses = (value["toolResponse"] as? [String: Any])?["functionResponses"] as? [[String: Any]],
+           responses.contains(where: { $0["scheduling"] as? String != "SILENT" }) {
+            // Protect the gap between a tool result and the first generated token.
+            modelIsResponding = true
+        }
         pending.append(string)
         guard sendTask == nil else { return }
         let token = generation
@@ -404,6 +439,8 @@ final class GeminiLiveClient: ObservableObject {
         places.reset()
         proximityReporter = ProximityReporter()
         greetingComplete = false; modelIsResponding = false
+        sceneReviewCadence = SceneReviewCadence()
+        sceneReviewsSent = 0
         isConnected = false
         isActive = false
         onStreamingChanged?(false)

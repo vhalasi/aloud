@@ -43,8 +43,21 @@ enum LiveProtocol {
                 iPhone FRONT camera, pointed away from the user toward their surroundings.
                 Describe only what is visible in the latest images. Speak concisely, usually
                 one or two sentences. Answer spoken questions naturally. After the greeting,
-                occasionally mention a significant visible feature or change; avoid repetitive
-                narration. Respect requests for quiet and let the user interrupt.
+                actively watch for newly visible hazards and orientation cues without waiting for
+                the user to ask. Prioritize a roadway or street crossing coming into view, a curb,
+                steps, an obstacle in the camera's direction, and a pedestrian signal changing.
+                Lead with the important observation, such as "A street crossing is coming into view."
+                Do not wait for a traffic light to be readable before mentioning the crossing itself.
+                Avoid repetitive narration. Respect requests for quiet and let the user interrupt.
+                The app sends SCENE_REVIEW events alongside fresh video. These are automatic
+                observation requests, not words spoken by the user. Inspect the latest image and
+                recent visual changes now. If there is a new hazard or important change, speak one
+                brief, specific caution or orientation cue immediately. Never claim the user is
+                walking or approaching based on a single image. If nothing important changed,
+                or the user requested quiet, call scene_review_complete silently. Do not say
+                "nothing changed", "all clear", or acknowledge the review. After a spoken review,
+                also call scene_review_complete. Never use external tools for these scene reviews.
+                Remember what you already announced; warn again only for a meaningful change.
                 If the view is obstructed, dark, blurry or stale, say so. Do not invent objects,
                 read illegible text, estimate precise distances from images, or claim that a path is safe.
                 Never tell the user it is safe to cross a street or move forward. This prototype
@@ -111,7 +124,7 @@ enum LiveProtocol {
                 Research is read-only; it cannot book, buy or send messages for the user.
                 """]]]
         ]
-        setup["tools"] = [["functionDeclarations": [locationFunction, proximityFunction] + (placesEnabled ? placeFunctions : []) + (researchEnabled ? researchFunctions : [])]]
+        setup["tools"] = [["functionDeclarations": [locationFunction, proximityFunction, sceneReviewFunction] + (placesEnabled ? placeFunctions : []) + (researchEnabled ? researchFunctions : [])]]
         return ["setup": setup]
     }
 
@@ -120,6 +133,16 @@ enum LiveProtocol {
         "description": "Read the latest measured central-camera surface distance and freshness from the phone. Use for distance or vibration questions. Not full-scene obstacle detection, walking direction, or crossing safety. Unavailable never means clear.",
         "parameters": ["type": "OBJECT", "properties": [:]]
     ]
+
+    static let sceneReviewFunction: [String: Any] = [
+        "name": "scene_review_complete", "behavior": "NON_BLOCKING",
+        "description": "Silently finish an automatic SCENE_REVIEW. Call without speech if nothing important changed or the user requested quiet; otherwise call after the brief spoken observation. Does not mean the path is clear.",
+        "parameters": ["type": "OBJECT", "properties": [:]]
+    ]
+
+    static func sceneReview() -> [String: Any] {
+        ["realtimeInput": ["text": "SCENE_REVIEW: Inspect the fresh camera image and recent visual changes for a newly visible crossing, roadway, curb, steps, obstacle or changed pedestrian signal. Give a short warning only for a new important observation. Respect quiet requests. Otherwise remain silent. Finish with scene_review_complete."]]
+    }
 
     static func proximity(_ context: [String: Any]) -> [String: Any] {
         let data = try? JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
@@ -173,9 +196,10 @@ enum LiveProtocol {
     }
 
     static func toolResponse(_ call: ToolCall, result: [String: Any], scheduling: String? = nil) -> [String: Any] {
-        var response = result
+        var response: [String: Any] = ["id": call.id, "name": call.name, "response": result]
+        // Wire-level scheduling belongs on FunctionResponse, not inside tool data.
         if let scheduling { response["scheduling"] = scheduling }
-        return ["toolResponse": ["functionResponses": [["id": call.id, "name": call.name, "response": response]]]]
+        return ["toolResponse": ["functionResponses": [response]]]
     }
 
     static func media(_ data: Data, mimeType: String, kind: String) -> [String: Any] {
@@ -200,6 +224,7 @@ enum LiveProtocol {
         var turnComplete = false
         var audio: [Data] = []
         var inputText: String?
+        var inputActivity = false
         var outputText: String?
         var errorCode: Int?
         var goingAway = false
@@ -227,6 +252,7 @@ enum LiveProtocol {
         event.interrupted = content["interrupted"] as? Bool ?? false
         event.turnComplete = content["turnComplete"] as? Bool ?? false
         event.inputText = (content["inputTranscription"] as? [String: Any])?["text"] as? String
+        event.inputActivity = event.inputText != nil || content["interimInputTranscription"] != nil
         event.outputText = (content["outputTranscription"] as? [String: Any])?["text"] as? String
         let parts = (content["modelTurn"] as? [String: Any])?["parts"] as? [[String: Any]] ?? []
         for part in parts {
@@ -237,5 +263,49 @@ enum LiveProtocol {
             event.audio.append(bytes)
         }
         return event
+    }
+}
+
+/// A fresh-frame-driven review, with one turn in flight and space for conversation.
+/// Audio energy only defers automatic reviews; it never filters microphone audio
+/// or changes Gemini's speech detection. Transcription is an additional input signal.
+struct SceneReviewCadence {
+    private(set) var awaitingTurn = false
+    private var lastReview: TimeInterval = -.infinity
+    private var inputSettlesAt: TimeInterval = -.infinity
+    private var lastTurnEnd: TimeInterval = -.infinity
+
+    mutating func noteInput(now: TimeInterval, quietPeriod: TimeInterval = 1.2) {
+        inputSettlesAt = max(inputSettlesAt, now + quietPeriod)
+    }
+
+    mutating func observeAudio(_ pcm: Data, now: TimeInterval) {
+        guard pcm.count >= 2 else { return }
+        let energy = pcm.withUnsafeBytes { bytes -> Double in
+            var sum = 0.0
+            for offset in stride(from: 0, to: bytes.count - 1, by: 2) {
+                let value = Double(Int16(littleEndian: bytes.loadUnaligned(fromByteOffset: offset, as: Int16.self))) / 32768
+                sum += value * value
+            }
+            return sum / Double(bytes.count / 2)
+        }
+        if energy >= 0.015 * 0.015 { noteInput(now: now) }
+    }
+
+    mutating func turnFinished(now: TimeInterval) {
+        awaitingTurn = false
+        lastTurnEnd = now
+    }
+
+    mutating func beginIfReady(now: TimeInterval, frameTime: TimeInterval,
+                              greetingComplete: Bool, modelBusy: Bool,
+                              playbackBusy: Bool, queuedMessages: Int) -> Bool {
+        guard greetingComplete, !awaitingTurn, !modelBusy, !playbackBusy,
+              queuedMessages < 5, now >= frameTime, now - frameTime < 1.5,
+              now - lastReview >= 3, now >= inputSettlesAt,
+              now - lastTurnEnd >= 1 else { return false }
+        lastReview = now
+        awaitingTurn = true
+        return true
     }
 }

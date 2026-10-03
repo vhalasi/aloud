@@ -29,9 +29,9 @@ struct LiveProtocolChecks {
         assert((LiveProtocol.describe()["clientContent"] as! [String: Any])["turnComplete"] as? Bool == true)
         let enabled = LiveProtocol.setup(placesEnabled: true)["setup"] as! [String: Any]
         let declarations = ((enabled["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
-        assert(declarations.count == 4)
+        assert(declarations.count == 5)
         let baseline = ((setup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
-        assert(baseline.count == 2 && baseline[0]["name"] as? String == "get_current_location")
+        assert(baseline.count == 3 && baseline[0]["name"] as? String == "get_current_location")
         let locationCall = tryParse(#"{"toolCall":{"functionCalls":[{"id":"gps-1","name":"get_current_location","args":{}}]}}"#).toolCalls[0]
         assert(locationCall.name == "get_current_location" && locationCall.arguments.isEmpty)
         let toolEvent = tryParse(#"{"toolCall":{"functionCalls":[{"id":"search-1","name":"find_nearby_places","args":{"category":"restaurant","radius_metres":800}},{"name":"missing_id"}]}}"#)
@@ -46,7 +46,7 @@ struct LiveProtocolChecks {
         _ = try JSONSerialization.data(withJSONObject: reply)
         let researchSetup = LiveProtocol.setup(placesEnabled: true, researchEnabled: true)["setup"] as! [String: Any]
         let researchDeclarations = (researchSetup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]]
-        assert(researchDeclarations.count == 8)
+        assert(researchDeclarations.count == 9)
         assert(researchDeclarations.filter { ($0["name"] as? String)?.contains("research") == true }.allSatisfy { $0["behavior"] as? String == "NON_BLOCKING" })
         assert(researchDeclarations.contains { $0["name"] as? String == "run_matrix_task" })
         assert(baseline.contains { $0["name"] as? String == "get_proximity_status" })
@@ -56,7 +56,9 @@ struct LiveProtocolChecks {
         let researchCall = LiveProtocol.ToolCall(id: "research-1", name: "research_surroundings", arguments: [:])
         let researchReply = LiveProtocol.toolResponse(researchCall, result: ["result": "Sourced answer"], scheduling: "WHEN_IDLE")
         let functionReply = ((researchReply["toolResponse"] as! [String: Any])["functionResponses"] as! [[String: Any]])[0]
-        assert((functionReply["response"] as! [String: Any])["scheduling"] as? String == "WHEN_IDLE")
+        assert(functionReply["scheduling"] as? String == "WHEN_IDLE")
+        assert((functionReply["response"] as! [String: Any])["scheduling"] == nil)
+        assert(tryParse(#"{"serverContent":{"interimInputTranscription":{"text":"Wait"}}}"#).inputActivity)
         _ = try JSONSerialization.data(withJSONObject: researchSetup)
         print("Live protocol checks passed")
     }

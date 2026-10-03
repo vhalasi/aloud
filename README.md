@@ -38,15 +38,56 @@ test was removed; the final app was installed and launched normally.
 ## Live voice and front-camera vision
 
 **Necklace mode** is enabled by default for wearing the phone upside down, charging
-port at the top and front camera facing outward. It rotates the app interface,
-session details and outgoing front-camera JPEG pixels by 180 degrees without
+port at the top and front camera facing outward. The idle screen stays upright;
+after Start, it rotates the live interface, session details and outgoing front-camera JPEG pixels by 180 degrees without
 mirroring. Turn it off under **… → Camera & feedback** for upright handheld use;
-the preference is saved. Central depth sampling and haptics are unchanged.
+the preference is saved. Stopping or a session failure restores the upright screen.
+Central depth sampling and haptics are unchanged.
 
 Speech-start detection uses Gemini's `START_SENSITIVITY_LOW` setting to reduce
 accidental turns and interruptions in busy surroundings. It does not identify the
 user's voice or guarantee rejection of nearby conversations. Speech-end timing
 and intentional spoken interruptions retain their default behavior.
+
+### Automatic scene reviews
+
+Gemini receives video continuously, but video alone does not trigger a response.
+Google's [streaming guide](https://ai.google.dev/gemini-api/docs/robotics-streaming#proactive-spatial-temporal-reasoning)
+recommends an explicit scene-review heartbeat, paced by completed turns. The
+[`proactiveAudio` setting](https://ai.google.dev/gemini-api/docs/live-api/capabilities#proactive-audio)
+allows irrelevant input to be ignored; it is not a continuous visual-warning switch.
+On October 3, our `gemini-3.8-live` v1beta endpoint rejected `setup.proactivity` as
+an unknown field, so the app does not send it or change models/API versions.
+
+After the greeting, an accepted fresh camera frame can trigger `SCENE_REVIEW` via
+`realtimeInput.text`, at most once every three seconds. Reviews prioritize newly
+visible crossings, roadways, curbs, steps, obstacles and changed pedestrian signals.
+They wait for the previous turn, queued speaker audio, local input activity and
+transcription to settle; congested queues and pending Places tools defer them.
+This is not a three-second alert guarantee: conversation, model/network latency,
+ambient sound and camera visibility can delay or prevent observations. Only one
+review may await completion; an uncompleted turn does not trigger repeated retries.
+Reviews stop with the session and never use cached images when capture stops.
+
+When nothing important changed, the model calls `scene_review_complete` without
+speech. Its acknowledgement uses the wire-level `FunctionResponse.scheduling =
+SILENT` field, preventing another model turn. Requests for quiet remain part of
+conversation context. The model is instructed not to repeat unchanged warnings
+or declare crossing safe. The Diagnostics section shows the scene review count.
+
+Validation: a live session with a public [crossing photograph by Max Ronnersjö,
+CC BY-SA 4.0](https://commons.wikimedia.org/wiki/File:Diagonalcrossing.jpg) produced
+no response during five seconds of video-only input, then a spoken crossing
+observation after a review. A repeated review returned a silent acknowledgement,
+and a subsequent user question received spoken audio. This checks the interaction
+mechanism, not moving-camera detection accuracy or street-crossing safety.
+
+```sh
+swiftc Aloud/LiveProtocol.swift Tests/SceneReviewChecks.swift -o /tmp/aloud-scene-checks
+/tmp/aloud-scene-checks
+```
+
+### Starting a session
 
 The developer supplies one shared hackathon key; users do not enter credentials.
 Copy `LocalSecrets.xcconfig.example` to `LocalSecrets.xcconfig`, paste the Gemini API key
@@ -55,7 +96,7 @@ on the `GEMINI_API_KEY =` line, save, and rebuild. This local file is ignored by
 extractable from the app; this is for private hackathon testing. A distributed app
 should obtain short-lived Live API tokens from a backend instead.
 
-Tap **Start**, allow microphone/camera access, and hold the phone upright with its
+Tap **Start**, allow microphone/camera access, and wear the phone upside down with its
 **front camera / screen facing the scene**. Aloud starts depth sensing if necessary,
 greets you briefly, then listens for spoken questions and highlights useful visible changes.
 The greeting does not mention missing images while the camera starts. In session
