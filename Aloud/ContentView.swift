@@ -64,6 +64,24 @@ struct ContentView: View {
                             }
                         }
                     }
+                    if live.hasResearch && live.isActive {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("Web research").font(.headline).accessibilityAddTraits(.isHeader)
+                            Text(live.researchStatus.isEmpty ? "Ask about a building’s history or ask me to look something up." : live.researchStatus)
+                                .font(.callout)
+                            if live.isResearching {
+                                Button("Cancel research", systemImage: "stop.circle") { live.cancelResearch() }
+                                    .buttonStyle(.bordered)
+                            }
+                            if !live.researchResult.isEmpty {
+                                DisclosureGroup("Research details and sources") {
+                                    Text(live.researchResult).font(.callout).textSelection(.enabled)
+                                }
+                            }
+                            Text("Research sends your question, and your location when needed, through Matrix to OpenAI. You can keep talking while it works.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
                     if !live.heard.isEmpty {
                         Text("You: \(live.heard)").font(.callout).foregroundStyle(.secondary)
                     }

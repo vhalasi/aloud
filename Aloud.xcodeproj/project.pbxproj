@@ -19,6 +19,7 @@
         A1000000000000000000000B = {isa = PBXBuildFile; fileRef = A2000000000000000000000B; };
         A1000000000000000000000D = {isa = PBXBuildFile; fileRef = A2000000000000000000000D; };
         A1000000000000000000000E = {isa = PBXBuildFile; fileRef = A2000000000000000000000E; };
+        A1000000000000000000000F = {isa = PBXBuildFile; fileRef = A2000000000000000000000F; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -36,6 +37,7 @@
         A2000000000000000000000C = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
         A2000000000000000000000D = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesLocation.swift; sourceTree = "<group>"; };
         A2000000000000000000000E = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlacesService.swift; sourceTree = "<group>"; };
+        A2000000000000000000000F = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MatrixResearchService.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -71,6 +73,7 @@
                 A2000000000000000000000B,
                 A2000000000000000000000A,
                 A20000000000000000000009,
+                A2000000000000000000000F,
                 A2000000000000000000000E,
                 A2000000000000000000000D,
 			);
@@ -163,6 +166,7 @@
                 A1000000000000000000000B,
                 A1000000000000000000000A,
                 A10000000000000000000009,
+                A1000000000000000000000F,
                 A1000000000000000000000E,
                 A1000000000000000000000D,
 			);
@@ -215,7 +219,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = Aloud/Info.plist;
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, and Google Places for nearby searches.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, Google Places for nearby searches, and Matrix and OpenAI for location-based web research.";
                 INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aloud sends your voice to Google Gemini while AI is on, so you can ask about your surroundings.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud measures nearby surfaces locally. While AI is on, front-camera images are sent to Google Gemini for spoken descriptions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -250,7 +254,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = Aloud/Info.plist;
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, and Google Places for nearby searches.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, Google Places for nearby searches, and Matrix and OpenAI for location-based web research.";
                 INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aloud sends your voice to Google Gemini while AI is on, so you can ask about your surroundings.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud measures nearby surfaces locally. While AI is on, front-camera images are sent to Google Gemini for spoken descriptions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

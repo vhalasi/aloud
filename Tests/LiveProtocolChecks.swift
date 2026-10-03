@@ -44,6 +44,15 @@ struct LiveProtocolChecks {
         assert(tryParse(#"{"toolCallCancellation":{"ids":["search-1"]}}"#).cancelledToolIDs == ["search-1"])
         _ = try JSONSerialization.data(withJSONObject: LiveProtocol.setup(placesEnabled: true))
         _ = try JSONSerialization.data(withJSONObject: reply)
+        let researchSetup = LiveProtocol.setup(placesEnabled: true, researchEnabled: true)["setup"] as! [String: Any]
+        let researchDeclarations = (researchSetup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]]
+        assert(researchDeclarations.count == 6)
+        assert(researchDeclarations.filter { ($0["name"] as? String)?.contains("research") == true }.allSatisfy { $0["behavior"] as? String == "NON_BLOCKING" })
+        let researchCall = LiveProtocol.ToolCall(id: "research-1", name: "research_surroundings", arguments: [:])
+        let researchReply = LiveProtocol.toolResponse(researchCall, result: ["result": "Sourced answer"], scheduling: "WHEN_IDLE")
+        let functionReply = ((researchReply["toolResponse"] as! [String: Any])["functionResponses"] as! [[String: Any]])[0]
+        assert((functionReply["response"] as! [String: Any])["scheduling"] as? String == "WHEN_IDLE")
+        _ = try JSONSerialization.data(withJSONObject: researchSetup)
         print("Live protocol checks passed")
     }
 

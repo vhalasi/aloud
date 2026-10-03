@@ -15,6 +15,13 @@ final class GeminiLiveClient: ObservableObject {
 
     @Published private(set) var placesStatus = ""
     @Published private(set) var nearbyPlaces: [NearbyPlace] = []
+    @Published private(set) var researchStatus = ""
+    @Published private(set) var researchResult = ""
+    @Published private(set) var isResearching = false
+    private let research = MatrixResearchService()
+    private var researchTask: Task<Void, Never>?
+    private var researchCallID: String?
+    var hasResearch: Bool { research.isConfigured }
     private let places = PlacesService()
     private var toolTasks: [String: Task<Void, Never>] = [:]
     private var toolQueueTail: Task<Void, Never>?
@@ -43,6 +50,11 @@ final class GeminiLiveClient: ObservableObject {
     private var newInputTurn = true
 
     init() {
+        research.onUpdate = { [weak self] update in
+            self?.researchStatus = update.status
+            self?.researchResult = update.result
+            self?.isResearching = update.isRunning
+        }
         places.onResults = { [weak self] results in self?.nearbyPlaces = results }
         audio.onStatus = { [weak self] text in self?.audioStatus = text }
         for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
@@ -120,7 +132,7 @@ final class GeminiLiveClient: ObservableObject {
         newInputTurn = true
         newOutputTurn = true
         socket.resume()
-        enqueue(LiveProtocol.setup(placesEnabled: places.isConfigured))
+        enqueue(LiveProtocol.setup(placesEnabled: places.isConfigured, researchEnabled: research.isConfigured))
         receiveTask = Task { [weak self] in
             do {
                 while !Task.isCancelled {
@@ -151,10 +163,18 @@ final class GeminiLiveClient: ObservableObject {
     private func handle(_ event: LiveProtocol.Event, token: UUID) throws {
         for id in event.cancelledToolIDs {
             toolTasks.removeValue(forKey: id)?.cancel()
+            if researchCallID == id {
+                researchTask?.cancel(); researchTask = nil; researchCallID = nil
+                research.reset()
+            }
         }
         for call in event.toolCalls {
             guard !handledToolIDs.contains(call.id) else { continue }
             handledToolIDs.insert(call.id)
+            if ["research_surroundings", "get_research_status", "cancel_research"].contains(call.name) {
+                handleResearch(call, token: token)
+                continue
+            }
             guard toolTasks.count < 4 else {
                 enqueue(LiveProtocol.toolResponse(call, result: ["error": "Too many pending requests. Retry after the current requests complete."]))
                 continue
@@ -236,6 +256,65 @@ final class GeminiLiveClient: ObservableObject {
         if event.turnComplete { newOutputTurn = true; newInputTurn = true }
     }
 
+    private func handleResearch(_ call: LiveProtocol.ToolCall, token: UUID) {
+        guard research.isConfigured else {
+            enqueue(LiveProtocol.toolResponse(call, result: ["error": "Research is not configured."]))
+            return
+        }
+        if call.name == "get_research_status" {
+            var result = research.statusResult()
+            result["is_running"] = isResearching
+            result["status"] = researchStatus
+            enqueue(LiveProtocol.toolResponse(call, result: result, scheduling: "WHEN_IDLE"))
+            return
+        }
+        if call.name == "cancel_research" {
+            let running = researchTask != nil
+            cancelResearch()
+            enqueue(LiveProtocol.toolResponse(call, result: ["status": running ? "Cancellation requested. Wait for confirmation; it may already have finished." : "No research is running."], scheduling: "WHEN_IDLE"))
+            return
+        }
+        guard researchTask == nil else {
+            enqueue(LiveProtocol.toolResponse(call, result: ["error": "Research is already running. Use get_research_status or cancel_research."], scheduling: "WHEN_IDLE"))
+            return
+        }
+        researchCallID = call.id
+        researchResult = ""
+        researchStatus = "Preparing research…"
+        isResearching = true
+        researchTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await self.performResearch(call.arguments)
+            guard self.generation == token, self.isConnected, self.researchCallID == call.id else { return }
+            self.researchTask = nil
+            self.researchCallID = nil
+            self.isResearching = false
+            if let error = result["error"] as? String { self.researchStatus = error }
+            self.enqueue(LiveProtocol.toolResponse(call, result: result, scheduling: "WHEN_IDLE"))
+        }
+    }
+
+    private func performResearch(_ arguments: [String: Any]) async -> [String: Any] {
+        guard let question = arguments["question"] as? String,
+              let includeLocation = arguments["include_location"] as? Bool else {
+            return ["error": "Provide a question and include_location boolean."]
+        }
+        var location: [String: Any]?
+        if includeLocation {
+            researchStatus = "Getting your location for research…"
+            let fix = await places.execute(name: "get_current_location", arguments: [:])
+            if Task.isCancelled { return ["error": "Research cancelled before submission."] }
+            if fix["error"] != nil { return fix }
+            location = fix
+        }
+        if Task.isCancelled { return ["error": "Research cancelled before submission."] }
+        return await research.research(question: question, location: location)
+    }
+
+    func cancelResearch() {
+        if !research.cancel() { researchTask?.cancel() }
+    }
+
     func sendFrame(_ jpeg: Data) {
         guard isConnected else { return }
         lastCameraFrame = ProcessInfo.processInfo.systemUptime
@@ -286,6 +365,11 @@ final class GeminiLiveClient: ObservableObject {
         toolTasks.removeAll()
         toolQueueTail = nil
         handledToolIDs.removeAll()
+        researchTask?.cancel(); researchTask = nil; researchCallID = nil
+        research.reset()
+        researchStatus = ""
+        researchResult = ""
+        isResearching = false
         places.reset()
         isConnected = false
         isActive = false

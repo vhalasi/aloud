@@ -1,3 +1,5 @@
 GEMINI_API_KEY =
 PLACES_API_KEY =
+MATRIX_API_URL = https:/$()/aloud-matrix-api.max-766.workers.dev
+MATRIX_API_TOKEN =
 #include? "LocalSecrets.xcconfig"

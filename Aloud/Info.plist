@@ -3,4 +3,6 @@
 <plist version="1.0"><dict>
     <key>GeminiAPIKey</key><string>$(GEMINI_API_KEY)</string>
     <key>PlacesAPIKey</key><string>$(PLACES_API_KEY)</string>
+    <key>MatrixAPIURL</key><string>$(MATRIX_API_URL)</string>
+    <key>MatrixAPIToken</key><string>$(MATRIX_API_TOKEN)</string>
 </dict></plist>
