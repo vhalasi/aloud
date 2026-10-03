@@ -186,7 +186,7 @@ final class GeminiLiveClient: ObservableObject {
         for call in event.toolCalls {
             guard !handledToolIDs.contains(call.id) else { continue }
             handledToolIDs.insert(call.id)
-            if ["research_surroundings", "get_research_status", "cancel_research"].contains(call.name) {
+            if ["research_surroundings", "run_matrix_task", "get_research_status", "cancel_research"].contains(call.name) {
                 handleResearch(call, token: token)
                 continue
             }
@@ -299,7 +299,7 @@ final class GeminiLiveClient: ObservableObject {
         isResearching = true
         researchTask = Task { [weak self] in
             guard let self else { return }
-            let result = await self.performResearch(call.arguments)
+            let result = await self.performResearch(call.arguments, provider: call.name == "run_matrix_task" ? .matrix : .browserUse)
             guard self.generation == token, self.isConnected, self.researchCallID == call.id else { return }
             self.researchTask = nil
             self.researchCallID = nil
@@ -309,7 +309,7 @@ final class GeminiLiveClient: ObservableObject {
         }
     }
 
-    private func performResearch(_ arguments: [String: Any]) async -> [String: Any] {
+    private func performResearch(_ arguments: [String: Any], provider: MatrixResearchService.Provider) async -> [String: Any] {
         guard let question = arguments["question"] as? String,
               let includeLocation = arguments["include_location"] as? Bool else {
             return ["error": "Provide a question and include_location boolean."]
@@ -323,7 +323,7 @@ final class GeminiLiveClient: ObservableObject {
             location = fix
         }
         if Task.isCancelled { return ["error": "Research cancelled before submission."] }
-        return await research.research(question: question, location: location)
+        return await research.research(question: question, location: location, provider: provider)
     }
 
     func cancelResearch() {

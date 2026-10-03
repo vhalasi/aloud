@@ -78,7 +78,7 @@ struct ContentView: View {
                                     Text(live.researchResult).font(.callout).textSelection(.enabled)
                                 }
                             }
-                            Text("Research sends your question, and your location when needed, through Matrix to OpenAI. You can keep talking while it works.")
+                            Text("Research sends your question, and your location when needed, to Browser Use and Google. Computer tasks use Matrix and OpenAI. You can keep talking while it works.")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }

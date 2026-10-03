@@ -31,6 +31,7 @@ final class ResearchStub: URLProtocol {
         }
         var id = "", submits = 0, keys: [String] = [], cancelCount = 0
         ResearchStub.handler = { request in
+            assert(request.url!.path.hasPrefix("/v1/research"))
             assert(request.value(forHTTPHeaderField: "Authorization") == "Bearer \(config.token)")
             if request.url!.path.hasSuffix("/cancel") { cancelCount += 1; return (200, ["id": id, "status": "cancelled"]) }
             if request.httpMethod == "POST" {
@@ -43,6 +44,7 @@ final class ResearchStub: URLProtocol {
         let success = service()
         let answer = await success.research(question: "Look it up")
         assert(answer["result"] as? String == "Verified answer https://example.com")
+        assert(answer["source"] as? String == "Web research using Browser Use and Gemini")
         assert(keys.count == 2 && keys[0] == keys[1])
         assert(!success.update.isRunning && success.update.status == "Research complete")
         assert(cancelCount == 0)
@@ -86,6 +88,14 @@ final class ResearchStub: URLProtocol {
         _ = await resetTask.value
         assert(resetService.update.result.isEmpty && !resetService.update.isRunning)
         assert(resetService.update.status == "Ask me to research a place or look something up.")
+        try await Task.sleep(for: .milliseconds(30))
+        ResearchStub.handler = { request in
+            assert(request.url!.path.hasPrefix("/v1/jobs"))
+            if request.httpMethod == "POST" { id = jobID(request) }
+            return (200, ["id": id, "status": "succeeded", "result": "Computed 17"])
+        }
+        let matrixAnswer = await service().research(question: "Compute a sum", provider: .matrix)
+        assert(matrixAnswer["source"] as? String == "Cloud computer task using Matrix and Codex")
         print("Matrix research checks passed: retry identity, result delivery, authentication errors, one-job limit, cancellation, timeout and stale-session suppression")
     }
 }

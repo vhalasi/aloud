@@ -46,8 +46,9 @@ struct LiveProtocolChecks {
         _ = try JSONSerialization.data(withJSONObject: reply)
         let researchSetup = LiveProtocol.setup(placesEnabled: true, researchEnabled: true)["setup"] as! [String: Any]
         let researchDeclarations = (researchSetup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]]
-        assert(researchDeclarations.count == 6)
+        assert(researchDeclarations.count == 7)
         assert(researchDeclarations.filter { ($0["name"] as? String)?.contains("research") == true }.allSatisfy { $0["behavior"] as? String == "NON_BLOCKING" })
+        assert(researchDeclarations.contains { $0["name"] as? String == "run_matrix_task" })
         let researchCall = LiveProtocol.ToolCall(id: "research-1", name: "research_surroundings", arguments: [:])
         let researchReply = LiveProtocol.toolResponse(researchCall, result: ["result": "Sourced answer"], scheduling: "WHEN_IDLE")
         let functionReply = ((researchReply["toolResponse"] as! [String: Any])["functionResponses"] as! [[String: Any]])[0]

@@ -223,7 +223,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = Aloud/Info.plist;
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, Google Places for nearby searches, and Matrix and OpenAI for location-based web research.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, Google Places for nearby searches, Browser Use and Google for web research, and Matrix and OpenAI for requested computer tasks.";
                 INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aloud sends your voice to Google Gemini while AI is on, so you can ask about your surroundings.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud measures nearby surfaces locally. While AI is on, front-camera images are sent to Google Gemini for spoken descriptions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -258,7 +258,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
                 INFOPLIST_FILE = Aloud/Info.plist;
-                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, Google Places for nearby searches, and Matrix and OpenAI for location-based web research.";
+                INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Aloud shares your location with its Gemini voice agent when you ask where you are, uses Apple for address lookup, Google Places for nearby searches, Browser Use and Google for web research, and Matrix and OpenAI for requested computer tasks.";
                 INFOPLIST_KEY_NSMicrophoneUsageDescription = "Aloud sends your voice to Google Gemini while AI is on, so you can ask about your surroundings.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud measures nearby surfaces locally. While AI is on, front-camera images are sent to Google Gemini for spoken descriptions.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
