@@ -1,6 +1,6 @@
 # Aloud Matrix API
 
-A Hono API deployed as a Cloudflare Worker. It accepts natural-language tasks and runs Codex on your Matrix cloud computer with **YOLO mode**, automatic MCP approvals, browser access, shell access and persistent files. The iPhone app is not connected yet.
+A Hono API deployed as a Cloudflare Worker. It accepts natural-language tasks and runs Codex on your Matrix cloud computer with **YOLO mode**, automatic MCP approvals, browser access, shell access and persistent files. The iPhone app invokes this API for background web research through its Gemini Live tools; see the root README for usage.
 
 ```mermaid
 sequenceDiagram

@@ -153,7 +153,58 @@ On October 3, 2026, the TrueDepth/Core Haptics update passed signed iPhone and s
 
 ## Matrix cloud agent API
 
-The independent [Hono backend](backend/README.md) runs unattended Codex jobs on
-Matrix through a Cloudflare Worker. It exposes task submission, progress,
-cancellation and artifact downloads, with browser, shell and file access on the
-cloud computer. See the backend README for deployment and the end-to-end demo.
+The [Hono backend](backend/README.md) runs unattended Codex jobs on Matrix through
+a Cloudflare Worker. The voice agent now uses it for deeper web research.
+
+Start AI and ask **“Look up the history of Stockholm City Hall”** or **“Research
+this museum’s official accessibility information.”** Name the place if its identity
+is uncertain. Aloud acknowledges the request, researches in the background, and
+speaks a short summary with source attribution when finished. You can keep talking
+while it works. Ask **“How is the research going?”** or **“Cancel that research”**;
+there is also a **Cancel research** button and an expandable result/source view.
+
+- `research_surroundings` is a non-blocking Gemini Live tool. The app submits an
+  authenticated Matrix job and polls it independently of Places, camera and audio.
+  `get_research_status` and `cancel_research` provide voice controls. Results use
+  `WHEN_IDLE` scheduling so they wait for the current response to finish.
+- The app includes a fresh Core Location fix only when the question needs it.
+  Its accuracy and timestamp travel with it; a location snapshot cannot identify
+  a building or provide real-time navigation. Camera frames and microphone audio
+  continue going to Gemini and are not streamed to Matrix.
+- The Matrix task receives the question and optional location through Cloudflare;
+  Codex/OpenAI and browser sources process the research. Job data persists on Matrix
+  under the backend's job directories. The app keeps results only for the live session.
+- Research from the app is read-only: it does not book, buy, change accounts or send
+  messages. Local depth and haptics remain independent of research results.
+- There is one research task per app session. Retries reuse an idempotency key.
+  Remote execution is capped at five minutes; app polling has a six-minute limit.
+  Stopping AI, backgrounding, or tool cancellation drops stale responses and requests
+  remote cancellation. Cancellation is best effort when the network/app is unavailable;
+  the server deadline still applies. Stop cannot undo completed actions.
+
+For development, put `MATRIX_API_TOKEN` in ignored `LocalSecrets.xcconfig` using
+`API_TOKEN` from `backend/.secrets.json`. `MATRIX_API_URL` defaults to the deployed
+Worker in `Config.xcconfig`; its `https:/$()/` spelling preserves the double slash
+in xcconfig. Neither users nor the voice model enter or receive the credential.
+Like the Gemini key, this shared full-access backend token is extractable from a
+private hackathon build. A distributed app needs per-user authentication and a
+restricted research endpoint. Matrix credential renewal is described in the
+backend README; it does not require rebuilding the app unless the API token changes.
+
+Validation on October 3, 2026: signed device and simulator builds passed, along
+with protocol/client fixtures for retry identity, authentication failures, a single
+active job, cancellation, deadlines and stale sessions. A real Gemini Live session
+invoked research, the exact Swift app service called the deployed Matrix API,
+and Gemini answered a second question during research before speaking the sourced
+result (406,562 PCM bytes). Physical microphone/camera/haptics still require an
+on-device check; simulator tests cannot establish those behaviors.
+
+```sh
+swiftc Aloud/MatrixResearchService.swift Tests/MatrixResearchChecks.swift -o /tmp/aloud-research-checks
+/tmp/aloud-research-checks
+swiftc Aloud/LiveProtocol.swift Tests/LiveProtocolChecks.swift -o /tmp/aloud-live-checks
+/tmp/aloud-live-checks
+```
+
+An opt-in real-network check is also provided in `Tests/MatrixResearchLiveCheck.swift`;
+its header shows how to invoke it with the ignored backend credential file.
