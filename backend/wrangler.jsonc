@@ -7,6 +7,23 @@
     "MATRIX_PLATFORM_URL": "https://app.matrix-os.com",
     "MATRIX_AUTH_URL": "https://api.matrix-os.com",
     "MATRIX_COMPUTER": "primary",
-    "MATRIX_RUNNER_PATH": "/home/matrix/home/projects/aloud-research/api/runner.py"
-  }
+    "MATRIX_RUNNER_PATH": "/home/matrix/home/projects/aloud-research/api/runner.py",
+    "BROWSER_USE_MODEL": "gemini-3.6-flash"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "RESEARCH_JOBS",
+        "class_name": "ResearchJob"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "ResearchJob"
+      ]
+    }
+  ]
 }

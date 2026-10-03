@@ -8,7 +8,7 @@ const auth = JSON.parse(await readFile(join(homedir(), '.matrixos', 'profiles', 
 if (!auth.accessToken || auth.expiresAt <= Date.now()) throw new Error('Run matrix login --profile cloud first: token missing or expired');
 let previous = {};
 try { previous = JSON.parse(await readFile('.secrets.json', 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-const secrets = { API_TOKEN: previous.API_TOKEN ?? randomBytes(32).toString('hex'), MATRIX_ACCESS_TOKEN: auth.accessToken };
+const secrets = { ...previous, API_TOKEN: previous.API_TOKEN ?? randomBytes(32).toString('hex'), MATRIX_ACCESS_TOKEN: auth.accessToken };
 for (const [file, content] of [
   ['.secrets.json', JSON.stringify(secrets, null, 2) + '\n'],
   ['.dev.vars', Object.entries(secrets).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n']
