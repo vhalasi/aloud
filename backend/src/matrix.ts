@@ -13,10 +13,14 @@ export class Matrix implements Executor {
   private async json(url: string, token: string, init: RequestInit = {}) {
     let response: Response;
     try {
-      response = await this.request(url, { ...init, redirect: 'error',
+      response = await this.request.call(globalThis, url, { ...init, redirect: 'manual',
         headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         signal: AbortSignal.timeout(20_000) });
-    } catch { throw new ApiError('matrix_unreachable', 503); }
+    } catch (error) {
+      console.warn('Matrix request failed', new URL(url).pathname,
+        error instanceof Error ? error.message.replaceAll(token, '[redacted]') : 'network error');
+      throw new ApiError('matrix_unreachable', 503);
+    }
     if ([401, 403].includes(response.status)) throw new ApiError('matrix_auth_required', 503);
     if (!response.ok) throw new ApiError('matrix_request_failed', 502);
     try { return await response.json() as any; } catch { throw new ApiError('matrix_invalid_response'); }

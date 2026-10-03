@@ -58,7 +58,9 @@ test('dispatch failure returns recoverable job ID and hides unexpected errors', 
 });
 test('Matrix exchanges tokens and submits chunked argv without a shell', async () => {
   const calls: {url:string, options:RequestInit}[] = [];
-  const request = async (url: any, options: any) => {
+  const request = async function(this: unknown, url: any, options: any) {
+    assert.equal(this, globalThis, "Workers fetch requires the global receiver");
+    assert.equal(options.redirect, 'manual', 'Workers does not implement redirect:error');
     calls.push({url:String(url),options});
     return Response.json(calls.length===1 ? {items:[{runtimeSlot:'primary',handle:'maxgfeller',availability:'available'}]} : calls.length===2 ? {slot:'primary',handle:'maxgfeller',accessToken:'runtime-test',expiresAt:Date.now()+10000} : {exitCode:0,stdout:JSON.stringify({ok:true,data:{id}})});
   };
