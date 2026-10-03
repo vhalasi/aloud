@@ -17,6 +17,7 @@ struct ContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showingDetails = false
+    @AppStorage("necklaceMode") private var necklaceMode = true
 
     // Debug-only visual fixtures never start a camera, microphone, network session or haptic.
     private var previewMode: String? {
@@ -94,8 +95,17 @@ struct ContentView: View {
         }
         .preferredColorScheme(.dark)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: active)
-        .sheet(isPresented: $showingDetails) { details }
+        // Rotate within the safe area: controls remain clear of the camera cutout
+        // and home indicator, including on phones without upside-down autorotation.
+        .rotationEffect(.degrees(necklaceMode ? 180 : 0))
+        .background(AloudStyle.background.ignoresSafeArea())
+        .sheet(isPresented: $showingDetails) {
+            details
+                .rotationEffect(.degrees(necklaceMode ? 180 : 0))
+                .presentationDragIndicator(.hidden)
+        }
         .onAppear(perform: configureSession)
+        .onChange(of: necklaceMode) { _, enabled in monitor.setNecklaceMode(enabled) }
         .onChange(of: live.isActive) { previous, current in
             // One session: failure, interruption and Stop return both subsystems to idle.
             if previous && !current { monitor.stop() }
@@ -195,6 +205,10 @@ struct ContentView: View {
                     }
                 }
                 Section("Camera & feedback") {
+                    Toggle("Necklace mode", isOn: $necklaceMode)
+                        .accessibilityHint("Rotates the interface and camera images for wearing the phone upside down.")
+                    Text("Wear the phone with its charging port at the top. Turn off Necklace mode for upright handheld use.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Text(monitor.cameraInstruction)
                     Text(monitor.message)
                     Button("Test vibration", systemImage: "waveform.path") { monitor.testVibration() }
@@ -231,6 +245,7 @@ struct ContentView: View {
     private func stopSession() { live.stop(); monitor.stop() }
 
     private func configureSession() {
+        monitor.setNecklaceMode(necklaceMode)
         guard previewMode == nil else { return }
         live.onReadyForCamera = { if !monitor.isRunning || monitor.isDemo { monitor.start() } }
         live.onStreamingChanged = { streaming in

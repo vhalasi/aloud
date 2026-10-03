@@ -14,6 +14,7 @@ final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate, AVCapt
     private let videoOutput = AVCaptureVideoDataOutput()
     private let imageContext = CIContext()
     private var videoHandler: ((Data) -> Void)?
+    private var necklaceMode = true
     private var lastVideoFrame: TimeInterval = 0
     private let logger = Logger(subsystem: "com.vhalasi.aloud", category: "TrueDepth")
     private var configured = false
@@ -83,6 +84,10 @@ final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate, AVCapt
         queue.async { self.videoHandler = handler; self.lastVideoFrame = 0 }
     }
 
+    func setNecklaceMode(_ enabled: Bool) {
+        queue.async { self.necklaceMode = enabled; self.lastVideoFrame = 0 }
+    }
+
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
                        from connection: AVCaptureConnection) {
         guard active, let videoHandler else { return }
@@ -90,7 +95,9 @@ final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate, AVCapt
         guard now - lastVideoFrame >= 1,
               let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         lastVideoFrame = now
-        let image = CIImage(cvPixelBuffer: buffer)
+        // Bake the half-turn into JPEG pixels, rather than relying on EXIF metadata
+        // being understood downstream. Keep the front camera unmirrored.
+        let image = CIImage(cvPixelBuffer: buffer).oriented(necklaceMode ? .down : .up)
         guard let jpeg = imageContext.jpegRepresentation(of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
             options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.65]) else { return }
         videoHandler(jpeg)

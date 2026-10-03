@@ -37,6 +37,12 @@ test was removed; the final app was installed and launched normally.
 
 ## Live voice and front-camera vision
 
+**Necklace mode** is enabled by default for wearing the phone upside down, charging
+port at the top and front camera facing outward. It rotates the app interface,
+session details and outgoing front-camera JPEG pixels by 180 degrees without
+mirroring. Turn it off under **… → Camera & feedback** for upright handheld use;
+the preference is saved. Central depth sampling and haptics are unchanged.
+
 Speech-start detection uses Gemini's `START_SENSITIVITY_LOW` setting to reduce
 accidental turns and interruptions in busy surroundings. It does not identify the
 user's voice or guarantee rejection of nearby conversations. Speech-end timing

@@ -23,7 +23,7 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
     var cameraInstruction: String {
         usesTrueDepth
             ? "Point the FRONT camera at the obstacle, with the screen facing away from you. Keep your fingers clear of the Dynamic Island."
-            : "Hold your phone upright with the rear camera facing forward."
+            : "Point the rear camera forward at the obstacle."
     }
     private let session = ARSession()
     private let haptics = HapticDriver()
@@ -76,6 +76,10 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
 
     func setVideoHandler(_ handler: ((Data) -> Void)?) {
         trueDepth.setVideoHandler(handler)
+    }
+
+    func setNecklaceMode(_ enabled: Bool) {
+        trueDepth.setNecklaceMode(enabled)
     }
 
     func setProximityHandler(_ handler: ((ProximitySnapshot) -> Void)?) {
