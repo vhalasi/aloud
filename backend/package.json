@@ -1,0 +1,6 @@
+{
+  "name": "aloud-matrix-api", "private": true, "type": "module",
+  "scripts": {"dev": "wrangler dev", "deploy": "wrangler deploy", "typecheck": "tsc --noEmit", "test": "node --import tsx --test tests/*.test.ts", "test:runner": "python3 -m unittest discover -s tests -p 'test_*.py'", "configure": "node scripts/configure-local.mjs", "install:matrix": "node scripts/install-matrix.mjs", "smoke": "node scripts/smoke.mjs"},
+  "dependencies": {"hono": "^4.0.0", "zod": "^4.0.0"},
+  "devDependencies": {"@cloudflare/workers-types": "^5.20261001.1", "@types/node": "^22.0.0", "tsx": "^4.0.0", "typescript": "^5.0.0", "wrangler": "^4.0.0"}
+}

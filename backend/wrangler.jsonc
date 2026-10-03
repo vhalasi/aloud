@@ -1,0 +1,12 @@
+{
+  "name": "aloud-matrix-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": true,
+  "vars": {
+    "MATRIX_PLATFORM_URL": "https://app.matrix-os.com",
+    "MATRIX_AUTH_URL": "https://api.matrix-os.com",
+    "MATRIX_COMPUTER": "primary",
+    "MATRIX_RUNNER_PATH": "/home/matrix/home/projects/aloud-research/api/runner.py"
+  }
+}

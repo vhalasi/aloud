@@ -1,0 +1,3 @@
+# Run npm run configure after authenticating the Matrix CLI.
+API_TOKEN="replace-with-at-least-32-random-characters"
+MATRIX_ACCESS_TOKEN="replace-with-matrix-access-token"

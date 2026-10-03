@@ -1,0 +1,10 @@
+import { readFile } from 'node:fs/promises';
+import { runtime } from './matrix-client.mjs';
+const remote = await runtime();
+const relative = 'projects/aloud-research/api/runner.py';
+const absolute = `/home/matrix/home/${relative}`;
+await remote.run(['/usr/bin/python3', '-c', 'from pathlib import Path; import sys; Path(sys.argv[1]).parent.mkdir(parents=True,exist_ok=True)', absolute]);
+await remote.upload(relative, await readFile(new URL('../matrix/runner.py', import.meta.url)));
+const result = JSON.parse(await remote.run(['/usr/bin/python3', absolute, 'health']));
+if (!result.ok || result.data.mode !== 'yolo') throw new Error('Runner health check failed');
+console.log(`Installed ${absolute}; runner healthy in YOLO mode.`);

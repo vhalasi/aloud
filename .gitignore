@@ -9,3 +9,14 @@ xcuserdata/
 
 # Shared hackathon credential, injected at build time
 LocalSecrets.xcconfig
+
+# Backend dependencies, local credentials and runtime output
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+backend/.secrets.json
+__pycache__/
+
+backend/.smoke/
