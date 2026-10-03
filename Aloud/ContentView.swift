@@ -16,7 +16,8 @@ struct ContentView: View {
                     .accessibilityAddTraits(.isHeader)
                 Text("Feel what’s ahead.")
                     .font(.title2.weight(.semibold))
-                Text("Hold your phone upright with the rear camera facing forward. Pulses get faster and stronger as a surface gets closer.")
+                Text(monitor.cameraInstruction)
+                Text("Pulses get faster and stronger as a surface gets closer.")
 
                 VStack(spacing: 16) {
                     Image(systemName: "waveform")
@@ -37,6 +38,15 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity)
                 .padding(24)
                 .background(.quaternary, in: RoundedRectangle(cornerRadius: 24))
+
+                Button("Test vibration", systemImage: "waveform.path") { monitor.testVibration() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                Text(monitor.hapticStatus)
+                    .font(.callout)
+                Text("If you feel nothing, check Settings → Accessibility → Touch → Vibration.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
 
                 if monitor.isDemo {
                     VStack(alignment: .leading, spacing: 12) {

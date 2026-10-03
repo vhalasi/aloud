@@ -2,6 +2,7 @@ import Foundation
 
 /// Prototype tuning, expressed in metres and seconds.
 struct ProximitySignal {
+    static let demoDistance: Double = 1
     let interval: TimeInterval
     let intensity: Double
 

@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+        A10000000000000000000006 = {isa = PBXBuildFile; fileRef = A20000000000000000000007; };
+        A10000000000000000000007 = {isa = PBXBuildFile; fileRef = A20000000000000000000008; };
 		A10000000000000000000001 /* AloudApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AloudApp.swift */; };
 		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
 		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* Assets.xcassets */; };
@@ -15,6 +17,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+        A20000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticDriver.swift; sourceTree = "<group>"; };
+        A20000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrueDepthCapture.swift; sourceTree = "<group>"; };
 		A20000000000000000000001 /* AloudApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AloudApp.swift; sourceTree = "<group>"; };
 		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		A20000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -50,6 +54,8 @@
 				A20000000000000000000003 /* Assets.xcassets */,
 				A20000000000000000000005 /* ProximitySignal.swift */,
 				A20000000000000000000006 /* ProximityMonitor.swift */,
+                A20000000000000000000007,
+                A20000000000000000000008,
 			);
 			path = Aloud;
 			sourceTree = "<group>";
@@ -135,6 +141,8 @@
 				A10000000000000000000002 /* ContentView.swift in Sources */,
 				A10000000000000000000004 /* ProximitySignal.swift in Sources */,
 				A10000000000000000000005 /* ProximityMonitor.swift in Sources */,
+                A10000000000000000000006,
+                A10000000000000000000007,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -183,7 +191,7 @@
 				DEVELOPMENT_TEAM = M536HFC3X7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud uses the camera and LiDAR to measure nearby surfaces and provide proximity vibrations. Camera data stays on this device.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud uses the TrueDepth or LiDAR camera to measure nearby surfaces and provide proximity vibrations. Camera data stays on this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -214,7 +222,7 @@
 				DEVELOPMENT_TEAM = M536HFC3X7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud uses the camera and LiDAR to measure nearby surfaces and provide proximity vibrations. Camera data stays on this device.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud uses the TrueDepth or LiDAR camera to measure nearby surfaces and provide proximity vibrations. Camera data stays on this device.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

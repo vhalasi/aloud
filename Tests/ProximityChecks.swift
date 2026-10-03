@@ -3,6 +3,7 @@ import Foundation
 @main
 struct ProximityChecks {
     static func main() {
+        precondition(ProximitySignal.at(distance: Float(ProximitySignal.demoDistance)) != nil, "Demo must start in the active haptic range")
         for invalid: Float in [.nan, .infinity, -.infinity, -1, 0, 2.5, 4] {
             precondition(ProximitySignal.at(distance: invalid) == nil)
         }

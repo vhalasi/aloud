@@ -11,15 +11,24 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
     @Published private(set) var message = "Ready to start"
     @Published private(set) var needsSettings = false
     @Published private(set) var pulseCount = 0
-    @Published var demoDistance: Double = 3 {
+    @Published private(set) var hapticStatus = "Tap Test vibration to check your phone."
+    @Published var demoDistance = ProximitySignal.demoDistance {
         didSet {
             if isDemo { distance = Float(demoDistance) }
         }
     }
 
-    let supportsDepth = ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth)
+    let usesTrueDepth = TrueDepthCapture.isSupported
+    var supportsDepth: Bool { usesTrueDepth || ARWorldTrackingConfiguration.supportsFrameSemantics(.sceneDepth) }
+    var cameraInstruction: String {
+        usesTrueDepth
+            ? "Point the FRONT camera at the obstacle, with the screen facing away from you. Keep your fingers clear of the Dynamic Island."
+            : "Hold your phone upright with the rear camera facing forward."
+    }
     private let session = ARSession()
-    private let feedback = UIImpactFeedbackGenerator(style: .heavy)
+    private let haptics = HapticDriver()
+    private let trueDepth = TrueDepthCapture()
+    private var testStop: DispatchWorkItem?
     private var timer: Timer?
     private var lastPulse: TimeInterval = 0
     private var lastReading: TimeInterval = 0
@@ -32,7 +41,8 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         super.init()
         session.delegate = self
         session.delegateQueue = .main
-        if !supportsDepth { message = "Live depth needs an iPhone with LiDAR." }
+        haptics.onStatus = { [weak self] status in self?.hapticStatus = status }
+        message = supportsDepth ? (usesTrueDepth ? "Front TrueDepth camera ready" : "Rear LiDAR camera ready") : "No depth camera available. Try demo pulses."
     }
 
     func start() {
@@ -65,6 +75,7 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
     func startDemo() {
         stop()
         needsSettings = false
+        demoDistance = ProximitySignal.demoDistance
         isDemo = true
         isRunning = true
         distance = Float(demoDistance)
@@ -76,6 +87,10 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         startRequest = UUID()
         startWhenActive = false
         session.pause()
+        trueDepth.stop()
+        testStop?.cancel()
+        testStop = nil
+        haptics.stop()
         timer?.invalidate()
         timer = nil
         isRunning = false
@@ -86,7 +101,7 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         lastFrame = 0
         depthWasUnavailable = false
         UIApplication.shared.isIdleTimerDisabled = false
-        message = supportsDepth ? "Stopped" : "Live depth needs an iPhone with LiDAR."
+        message = supportsDepth ? "Stopped" : "No depth camera available. Try demo pulses."
     }
 
     func applicationBecameActive() {
@@ -101,7 +116,42 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         UIAccessibility.post(notification: .announcement, argument: message)
     }
 
+    func testVibration() {
+        testStop?.cancel()
+        if haptics.pulse(intensity: 1, duration: 0.35) { pulseCount += 1 }
+        if !isRunning {
+            let work = DispatchWorkItem { [weak self] in self?.haptics.stop() }
+            testStop = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        }
+    }
+
     private func startSession() {
+        if usesTrueDepth {
+            isRunning = true
+            message = "Starting front TrueDepth camera…"
+            let request = startRequest
+            trueDepth.start(measurement: { [weak self] distance in
+                DispatchQueue.main.async {
+                    guard let self, self.isRunning, !self.isDemo, self.startRequest == request else { return }
+                    self.acceptMeasurement(distance)
+                }
+            }, ready: { [weak self] in
+                DispatchQueue.main.async {
+                    guard let self, self.isRunning, !self.isDemo, self.startRequest == request else { return }
+                    self.lastReading = ProcessInfo.processInfo.systemUptime
+                    self.beginPulses()
+                }
+            }, failure: { [weak self] message in
+                DispatchQueue.main.async {
+                    guard let self, self.isRunning, !self.isDemo, self.startRequest == request else { return }
+                    self.stop()
+                    self.message = message
+                    UIAccessibility.post(notification: .announcement, argument: message)
+                }
+            })
+            return
+        }
         let configuration = ARWorldTrackingConfiguration()
         configuration.frameSemantics = .sceneDepth
         isRunning = true
@@ -113,7 +163,6 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
 
     private func beginPulses() {
         UIApplication.shared.isIdleTimerDisabled = true
-        feedback.prepare()
         let timer = Timer(timeInterval: 0.04, repeats: true) { [weak self] _ in
             self?.tick()
         }
@@ -126,7 +175,7 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         if !isDemo && now - lastReading > 0.6 {
             distance = nil
-            message = "Depth unavailable. Hold the rear camera forward."
+            message = usesTrueDepth ? "Depth unavailable. Point the front camera at a nearby surface." : "Depth unavailable. Hold the rear camera forward."
             if !depthWasUnavailable {
                 UIAccessibility.post(notification: .announcement, argument: message)
                 depthWasUnavailable = true
@@ -137,20 +186,27 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
             return
         }
         if now - lastPulse >= signal.interval {
-            feedback.impactOccurred(intensity: CGFloat(signal.intensity))
-            feedback.prepare()
+            haptics.pulse(intensity: signal.intensity)
             lastPulse = now
             pulseCount += 1
         }
     }
 
     func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        guard isRunning, !isDemo, frame.timestamp - lastFrame >= 0.1 else { return }
+        guard isRunning, !isDemo, !usesTrueDepth, frame.timestamp - lastFrame >= 0.1 else { return }
         lastFrame = frame.timestamp
         guard case .normal = frame.camera.trackingState,
               let depth = frame.sceneDepth,
               let measurement = readCentralDepth(depth) else {
             // Stop immediately on invalid data; the timer announces prolonged loss.
+            acceptMeasurement(nil)
+            return
+        }
+        acceptMeasurement(measurement)
+    }
+
+    private func acceptMeasurement(_ measurement: Float?) {
+        guard let measurement else {
             distance = nil
             if !depthWasUnavailable { message = "Waiting for reliable depth…" }
             return
@@ -159,7 +215,7 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         distance = distance.map { min(measurement, $0 * 0.7 + measurement * 0.3) } ?? measurement
         lastReading = ProcessInfo.processInfo.systemUptime
         depthWasUnavailable = false
-        message = "Measuring the centre of the camera view"
+        message = usesTrueDepth ? "Measuring with the FRONT camera" : "Measuring with the rear LiDAR camera"
     }
 
     private func readCentralDepth(_ depth: ARDepthData) -> Float? {
@@ -197,14 +253,14 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
     }
 
     func sessionWasInterrupted(_ session: ARSession) {
-        guard isRunning, !isDemo else { return }
+        guard isRunning, !isDemo, !usesTrueDepth else { return }
         stop()
         message = "Camera interrupted. Tap Start to try again."
         UIAccessibility.post(notification: .announcement, argument: message)
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
-        guard isRunning, !isDemo else { return }
+        guard isRunning, !isDemo, !usesTrueDepth else { return }
         stop()
         message = "Camera session failed. Tap Start to try again."
         UIAccessibility.post(notification: .announcement, argument: message)
