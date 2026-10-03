@@ -25,7 +25,14 @@ Tap **Start AI**, allow microphone/camera access, and hold the phone upright wit
 **front camera / screen facing the scene**. Aloud starts depth sensing if necessary,
 greets you briefly, then listens for spoken questions and highlights useful visible changes.
 The greeting does not mention missing images while the camera starts. **Describe
-surroundings** requests another description. You can interrupt by speaking. If voice is silent, press the volume-up button while AI is on and tap **Test speaker** for two tones through the same playback path. **Audio details** shows the output route, volume and completed audio buffers. The latest
+surroundings** requests another description. You can interrupt by speaking. If voice is silent, press the volume-up button while AI is on and tap **Test speaker** for two tones through the same playback path. **Audio details** shows the output route, volume, engine state, seconds of audio
+received and queued, completed buffers, server speech interruptions and automatic
+recovery count. A half-second watchdog detects stopped engines and stalled render
+clocks, rebuilds playback on the existing voice-processing engine, and reschedules
+unplayed audio. Silence between turns is not a playback failure. Recovery is bounded;
+persistent failures ask you to restart AI. Interrupted speech is discarded and never
+replayed by recovery. These counters distinguish missing incoming speech from queued
+speech that is not advancing; they cannot prove that sound was physically audible. The latest
 question and reply appear as text. **Stop AI** ends network streaming and audio while
 local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding ends both.
 
@@ -208,3 +215,23 @@ swiftc Aloud/LiveProtocol.swift Tests/LiveProtocolChecks.swift -o /tmp/aloud-liv
 
 An opt-in real-network check is also provided in `Tests/MatrixResearchLiveCheck.swift`;
 its header shows how to invoke it with the ignored backend credential file.
+
+
+## Audio recovery validation
+
+On October 3, 2026, the connected iPhone passed a debug-only recovery check that
+paused the audio engine with audio pending, paused the player with audio pending,
+and then interrupted queued audio. Both stalls recovered and reported played buffers;
+the interrupted queue stayed empty. This validates induced playback faults, not the
+exact cause of every reported intermittent silent period. Signed iPhone and simulator
+builds and the playback-health/protocol checks passed.
+
+```sh
+swiftc Aloud/AudioPlaybackHealth.swift Tests/AudioPlaybackChecks.swift -o /tmp/aloud-audio-checks
+/tmp/aloud-audio-checks
+```
+
+Developers can launch a Debug build with `--audio-recovery-check` to repeat the
+on-device test. It plays tones and prints `ALOUD_AUDIO_RECOVERY_CHECK PASS` or `FAIL`
+to the app console. Microphone samples are discarded and no Gemini connection is
+opened during this check. Launch normally afterward to resume the voice app.
