@@ -13,6 +13,13 @@ final class GeminiLiveClient: ObservableObject {
     @Published private(set) var audioStatus = "Start AI to enable voice."
     @Published private(set) var needsSettings = false
 
+    @Published private(set) var placesStatus = ""
+    @Published private(set) var nearbyPlaces: [NearbyPlace] = []
+    private let places = PlacesService()
+    private var toolTasks: [String: Task<Void, Never>] = [:]
+    private var handledToolIDs = Set<String>()
+    var hasPlacesKey: Bool { places.isConfigured }
+
     var hasKey: Bool { !Self.apiKey.isEmpty }
     var onReadyForCamera: (() -> Void)?
     var onStreamingChanged: ((Bool) -> Void)?
@@ -23,6 +30,7 @@ final class GeminiLiveClient: ObservableObject {
     private var socket: URLSessionWebSocketTask?
     private let audio = LiveAudio()
     private var generation = UUID()
+    private var startupTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var sendTask: Task<Void, Never>?
     private var timeoutTask: Task<Void, Never>?
@@ -35,6 +43,7 @@ final class GeminiLiveClient: ObservableObject {
     private var initialDescriptionSent = false
 
     init() {
+        places.onResults = { [weak self] results in self?.nearbyPlaces = results }
         audio.onStatus = { [weak self] text in self?.audioStatus = text }
         for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
                      AVAudioSession.mediaServicesWereResetNotification] {
@@ -66,7 +75,7 @@ final class GeminiLiveClient: ObservableObject {
         status = "Requesting camera and microphone…"
         let token = UUID()
         generation = token
-        Task {
+        startupTask = Task {
             let camera = await AVCaptureDevice.requestAccess(for: .video)
             guard generation == token, isActive else { return }
             let microphone = camera ? await AVCaptureDevice.requestAccess(for: .audio) : false
@@ -75,6 +84,16 @@ final class GeminiLiveClient: ObservableObject {
                 stop(message: "Allow camera and microphone in Settings to use AI.")
                 needsSettings = true
                 return
+            }
+            if places.isConfigured {
+                status = "Preparing location for nearby places…"
+                do {
+                    _ = try await places.location.current(requestPermission: true)
+                    placesStatus = "Nearby search ready. Ask for restaurants or places around you."
+                } catch {
+                    placesStatus = "Location unavailable. Enable location for Aloud in Settings to search nearby."
+                }
+                guard generation == token, isActive else { return }
             }
             // Permission sheets briefly deactivate the app. Wait for their dismissal.
             for _ in 0..<30 {
@@ -100,7 +119,7 @@ final class GeminiLiveClient: ObservableObject {
         newInputTurn = true
         newOutputTurn = true
         socket.resume()
-        enqueue(LiveProtocol.setup())
+        enqueue(LiveProtocol.setup(placesEnabled: places.isConfigured))
         receiveTask = Task { [weak self] in
             do {
                 while !Task.isCancelled {
@@ -129,6 +148,26 @@ final class GeminiLiveClient: ObservableObject {
     }
 
     private func handle(_ event: LiveProtocol.Event, token: UUID) throws {
+        for id in event.cancelledToolIDs {
+            toolTasks.removeValue(forKey: id)?.cancel()
+        }
+        for call in event.toolCalls {
+            guard !handledToolIDs.contains(call.id) else { continue }
+            handledToolIDs.insert(call.id)
+            guard places.isConfigured, toolTasks.isEmpty else {
+                enqueue(LiveProtocol.toolResponse(call, result: ["error": "Places unavailable or another search is in progress. Retry after it completes."]))
+                continue
+            }
+            placesStatus = "Looking up Google Maps…"
+            toolTasks[call.id] = Task { [weak self] in
+                guard let self else { return }
+                let result = await self.places.execute(name: call.name, arguments: call.arguments)
+                guard !Task.isCancelled, self.generation == token, self.isConnected else { return }
+                self.toolTasks[call.id] = nil
+                self.placesStatus = result["error"] as? String ?? "Google Maps results updated"
+                self.enqueue(LiveProtocol.toolResponse(call, result: result))
+            }
+        }
         if let code = event.errorCode {
             stop(message: "Gemini rejected the request (\(code)). Check the API key, quota and model access.")
             return
@@ -235,6 +274,11 @@ final class GeminiLiveClient: ObservableObject {
 
     func stop(message: String = "AI is off") {
         generation = UUID()
+        startupTask?.cancel(); startupTask = nil
+        for task in toolTasks.values { task.cancel() }
+        toolTasks.removeAll()
+        handledToolIDs.removeAll()
+        places.reset()
         isConnected = false
         isActive = false
         onStreamingChanged?(false)

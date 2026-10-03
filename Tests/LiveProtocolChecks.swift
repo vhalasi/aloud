@@ -27,6 +27,20 @@ struct LiveProtocolChecks {
         assert(video["mimeType"] == "image/jpeg")
         assert(Data(base64Encoded: video["data"]!) == Data([0, 1, 2, 3]))
         assert((LiveProtocol.describe()["clientContent"] as! [String: Any])["turnComplete"] as? Bool == true)
+        let enabled = LiveProtocol.setup(placesEnabled: true)["setup"] as! [String: Any]
+        let declarations = ((enabled["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
+        assert(declarations.count == 2)
+        assert(setup["tools"] == nil)
+        let toolEvent = tryParse(#"{"toolCall":{"functionCalls":[{"id":"search-1","name":"find_nearby_places","args":{"category":"restaurant","radius_metres":800}},{"name":"missing_id"}]}}"#)
+        assert(toolEvent.toolCalls.count == 1)
+        let call = toolEvent.toolCalls[0]
+        assert(call.id == "search-1" && call.arguments["category"] as? String == "restaurant")
+        let reply = LiveProtocol.toolResponse(call, result: ["places": [], "source": "Google Maps"])
+        let response = ((reply["toolResponse"] as! [String: Any])["functionResponses"] as! [[String: Any]])[0]
+        assert(response["id"] as? String == "search-1" && response["name"] as? String == "find_nearby_places")
+        assert(tryParse(#"{"toolCallCancellation":{"ids":["search-1"]}}"#).cancelledToolIDs == ["search-1"])
+        _ = try JSONSerialization.data(withJSONObject: LiveProtocol.setup(placesEnabled: true))
+        _ = try JSONSerialization.data(withJSONObject: reply)
         print("Live protocol checks passed")
     }
 

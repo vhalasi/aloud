@@ -44,6 +44,44 @@ local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding e
 References: [model](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live),
 [Live protocol](https://ai.google.dev/api/live).
 
+## Nearby places
+
+Google Places API (New) is enabled in the temporary hackathon project
+`sthlm-ai26arn-6425` (Stockholm AI-6425). The key named **Aloud iOS Places Hackathon**
+is restricted to Places API (New) and the iOS bundle identifier `com.vhalasi.aloud`.
+The app sends the corresponding `X-Ios-Bundle-Identifier` header. Set
+`PLACES_API_KEY` in the ignored `LocalSecrets.xcconfig` and rebuild; it is embedded
+in the app just like the shared Gemini key. No credential values belong in Git.
+
+With a Places key configured, Start AI asks for **While Using the App** location
+permission before connecting the voice session. Denial leaves voice/vision usable.
+Ask **“Find a restaurant near me”**, **“Is it open?”**, or **“Are there museums nearby?”**.
+
+- Gemini calls `find_nearby_places` or `get_place_details` through the existing Live
+  WebSocket. The app performs the HTTPS requests and returns the results to Gemini.
+- Searches use device coordinates, never coordinates supplied by the model. Fixes
+  must be less than 60 seconds old and have reported accuracy within 500 metres.
+  There is no background location tracking or persistent location history.
+- Nearby Search accepts restaurants, cafes, supermarkets, pharmacies, tourist
+  attractions, museums and parks. Radius defaults to 1 km and is bounded to 200 m–3 km;
+  it requests up to five results ranked by distance. Distances shown are approximate
+  straight-line distances, not walking routes or proof of accessible entrances.
+- Place Details accepts only IDs previously retrieved in the current live session.
+  It fetches listed opening hours and website data only when requested. Missing
+  hours are unknown. Nearby search alone does not identify a building in the image.
+- Places results and source links appear under Google Maps attribution. Results
+  stay in memory and are cleared when AI stops. Search failures return explicit
+  errors to the agent; cancelled tool calls and stopped sessions discard results.
+- Searches are limited to one in flight, have finite timeouts and request explicit
+  field masks. Opening-hours details use a higher Places billing tier than the
+  basic nearby search. This integration does not add general web/history research.
+
+On October 3, 2026, the restricted key passed real Nearby Search and Place Details
+requests at public Stockholm Central test coordinates. A Gemini Live test invoked
+`find_nearby_places`, received real Places results and generated a PCM spoken reply.
+Signed iPhone and simulator builds and protocol checks pass. Device location
+permission and nearby recommendations still need a physical phone trial.
+
 ## Prototype behavior
 
 - TrueDepth uses `AVCaptureDepthDataOutput` on a serial background queue, with filtering disabled and conversion to Float32 depth in metres. Only frames reporting absolute depth accuracy are accepted. The central square of the front camera view is sampled. Depth data stays on the device. RGB images are sent to Gemini only while AI is on.

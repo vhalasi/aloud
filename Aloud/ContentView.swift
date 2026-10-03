@@ -43,6 +43,27 @@ struct ContentView: View {
                         }
                         Text("Front-camera images sent: \(live.framesSent)").font(.caption)
                     }
+                    if live.hasPlacesKey {
+                        Text(live.placesStatus.isEmpty ? "Ask about nearby restaurants, cafes or attractions." : live.placesStatus)
+                            .font(.footnote)
+                        Text("Nearby searches send your location to Google Places.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    if !live.nearbyPlaces.isEmpty {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Google Maps").font(.system(size: 14)).fixedSize(horizontal: true, vertical: false)
+                            ForEach(live.nearbyPlaces) { place in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    if let url = place.mapsURL {
+                                        Link(place.name, destination: url)
+                                    } else { Text(place.name).bold() }
+                                    Text("About \(place.metres) m in a straight line").font(.caption)
+                                    Text(place.address).font(.caption)
+                                    ForEach(place.attributions, id: \.self) { Text($0).font(.caption2) }
+                                }
+                            }
+                        }
+                    }
                     if !live.heard.isEmpty {
                         Text("You: \(live.heard)").font(.callout).foregroundStyle(.secondary)
                     }
