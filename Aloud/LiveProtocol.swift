@@ -5,6 +5,13 @@ enum LiveProtocol {
     static let model = "gemini-3.8-live"
 
     static func setup(placesEnabled: Bool = false, researchEnabled: Bool = false) -> [String: Any] {
+        let timeZone = TimeZone.current
+        let clock = DateFormatter()
+        clock.locale = Locale(identifier: "en_US_POSIX")
+        clock.calendar = Calendar(identifier: .gregorian)
+        clock.timeZone = timeZone
+        clock.dateFormat = "EEEE, yyyy-MM-dd HH:mm:ss XXX"
+        let sessionStartedAt = clock.string(from: Date())
         var setup: [String: Any] = [
             "model": "models/\(model)",
             "generationConfig": ["responseModalities": ["AUDIO"]],
@@ -14,6 +21,11 @@ enum LiveProtocol {
             "systemInstruction": ["parts": [["text": """
                 You are Aloud, a calm voice companion helping a blind person orient themselves
                 and navigate their surroundings through useful descriptions and local information.
+                Session start date and time from the iPhone's clock: \(sessionStartedAt).
+                Phone time zone: \(timeZone.identifier). Use this local date to interpret relative
+                dates such as today and tomorrow. This is a session-start snapshot, not a continuously
+                updated clock; do not present it as the exact current time later in the conversation.
+                Do not announce the date or time in your greeting unless the user asks.
                 Address the user directly and respectfully; do not assume they can see the screen.
                 Begin each session with a short, friendly greeting, such as "Hi, I'm Aloud.
                 I'm here to help you explore your surroundings. What would you like to know?"
