@@ -56,6 +56,9 @@ final class GeminiLiveClient: ObservableObject {
             self?.isResearching = update.isRunning
         }
         places.onResults = { [weak self] results in self?.nearbyPlaces = results }
+        audio.onFailure = { [weak self] in
+            self?.stop(message: "Speaker could not recover. Tap Start AI to restart voice.")
+        }
         audio.onStatus = { [weak self] text in self?.audioStatus = text }
         for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
                      AVAudioSession.mediaServicesWereResetNotification] {
@@ -77,6 +80,18 @@ final class GeminiLiveClient: ObservableObject {
             })
         }
     }
+
+    #if DEBUG
+    func runAudioRecoveryCheck() {
+        guard !isActive else { return }
+        Task { @MainActor in
+            status = "Checking speaker recovery…"
+            let passed = await audio.runRecoveryCheck()
+            status = passed ? "Speaker recovery check passed" : "Speaker recovery check failed"
+            print("ALOUD_AUDIO_RECOVERY_CHECK \(passed ? "PASS" : "FAIL")")
+        }
+    }
+    #endif
 
     func start() {
         guard !isActive else { return }
@@ -331,7 +346,7 @@ final class GeminiLiveClient: ObservableObject {
 
     func describe() {
         guard isConnected, framesSent > 0 else { return }
-        audio.interrupt()
+        audio.interrupt(countAsInterruption: false)
         newOutputTurn = true
         enqueue(LiveProtocol.describe())
     }

@@ -4,6 +4,20 @@ import os
 /// Lifecycle and playback run on main. The input tap owns its converter.
 final class LiveAudio {
     var onStatus: ((String) -> Void)?
+    var onFailure: (() -> Void)?
+    private struct PendingBuffer {
+        let id = UUID()
+        let buffer: AVAudioPCMBuffer
+    }
+    private var pendingBuffers: [PendingBuffer] = []
+    private var inputHandler: ((Data) -> Void)?
+    private var health = AudioPlaybackHealth()
+    private var watchdog: DispatchSourceTimer?
+    private var configurationObserver: NSObjectProtocol?
+    private var recoveryCount = 0
+    private var interruptionCount = 0
+    private var isRecovering = false
+    private var lastStatusTime: TimeInterval = 0
     private let logger = Logger(subsystem: "com.vhalasi.aloud", category: "VoicePlayback")
     private var completedBuffers = 0
     private var receivedFrames: AVAudioFrameCount = 0
@@ -17,15 +31,46 @@ final class LiveAudio {
 
     func start(onPCM: @escaping (Data) -> Void) throws {
         stop()
+        inputHandler = onPCM
+        receivedFrames = 0
+        completedBuffers = 0
+        recoveryCount = 0
+        interruptionCount = 0
+        health = AudioPlaybackHealth()
+        do {
+            try configureSession()
+            try buildGraph()
+        } catch { stop(); throw error }
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.reportStatus(force: true) }
+        }
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now() + 0.5, repeating: 0.5)
+        timer.setEventHandler { [weak self] in self?.checkPlayback() }
+        watchdog = timer
+        timer.resume()
+        reportStatus(force: true)
+    }
+
+    private func configureSession() throws {
+        let session = AVAudioSession.sharedInstance()
+        if session.category != .playAndRecord || session.mode != .videoChat ||
+            !session.categoryOptions.contains(.defaultToSpeaker) || !session.categoryOptions.contains(.allowBluetoothHFP) {
+            try session.setCategory(.playAndRecord, mode: .videoChat, options: [.defaultToSpeaker, .allowBluetoothHFP])
+        }
         // Recording normally suppresses haptics. Keep proximity feedback enabled.
         try session.setAllowHapticsAndSystemSoundsDuringRecording(true)
         try session.setActive(true)
-        let engine = AVAudioEngine()
+    }
+
+    private func buildGraph(using existingEngine: AVAudioEngine? = nil) throws {
+        guard let onPCM = inputHandler else { throw AudioError.unavailable }
+        let session = AVAudioSession.sharedInstance()
+        let engine = existingEngine ?? AVAudioEngine()
         self.engine = engine
         let input = engine.inputNode
-        try input.setVoiceProcessingEnabled(true)
+        if !input.isVoiceProcessingEnabled { try input.setVoiceProcessingEnabled(true) }
         input.voiceProcessingOtherAudioDuckingConfiguration = .init(enableAdvancedDucking: false, duckingLevel: .min)
         // Voice processing can change the route when it initializes. Prefer the
         // loudspeaker for the handheld prototype, while preserving headphones.
@@ -63,19 +108,61 @@ final class LiveAudio {
         engine.prepare()
         try engine.start()
         player.play()
-        receivedFrames = 0
-        completedBuffers = 0
-        volumeObservation = session.observe(\.outputVolume, options: [.new]) { [weak self] _, _ in
-            DispatchQueue.main.async { self?.reportStatus() }
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self, weak engine] _ in
+            guard let self, let engine, self.engine === engine else { return }
+            // Defer until the hardware has finished changing; the timer also catches
+            // stalls that do not send a configuration notification.
+            DispatchQueue.main.async { [weak self] in self?.checkPlayback() }
+        }
+    }
+
+    private func checkPlayback() {
+        guard let engine, let player, inputHandler != nil, !isRecovering else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        let sampleTime = player.isPlaying ? player.lastRenderTime.flatMap { player.playerTime(forNodeTime: $0)?.sampleTime } : nil
+        if health.needsRecovery(now: now, engineRunning: engine.isRunning,
+                                hasPendingAudio: !pendingBuffers.isEmpty, sampleTime: sampleTime) {
+            do { try recoverPlayback() }
+            catch {
+                logger.error("Audio graph recovery failed; domain=\((error as NSError).domain, privacy: .public) code=\((error as NSError).code)")
+                #if DEBUG
+                print("AUDIO_RECOVERY_ERROR domain=\((error as NSError).domain) code=\((error as NSError).code)")
+                #endif
+                stop()
+                onFailure?()
+                return
+            }
         }
         reportStatus()
     }
 
+    private func recoverPlayback() throws {
+        guard !isRecovering, health.recoveryAttempts < 3 else { throw AudioError.unavailable }
+        isRecovering = true
+        defer { isRecovering = false }
+        health.recovered(now: ProcessInfo.processInfo.systemUptime)
+        recoveryCount += 1
+        // Keep unplayed buffers, invalidate callbacks from the old graph, and rebuild
+        // input conversion/output formats for the current hardware route. Reuse the
+        // I/O engine: replacing a live voice-processing I/O unit can invalidate the
+        // new unit's route when the old engine is released.
+        playbackGeneration = UUID()
+        let existingEngine = engine
+        tearDownGraph(preservingEngine: true)
+        try configureSession()
+        try buildGraph(using: existingEngine)
+        for entry in pendingBuffers { schedule(entry) }
+        logger.info("Rebuilt audio graph; recovery count=\(self.recoveryCount)")
+        reportStatus(force: true)
+    }
+
     func play(_ data: Data) throws {
-        guard let player, let engine, !data.isEmpty, data.count.isMultiple(of: 2) else { throw AudioError.unavailable }
+        guard engine != nil, player != nil, !data.isEmpty, data.count.isMultiple(of: 2) else { throw AudioError.unavailable }
         // An audio route/configuration change can stop AVAudioEngine without
         // stopping the WebSocket. Do not silently queue buffers into a stopped engine.
-        if !engine.isRunning { try engine.start() }
+        if engine?.isRunning != true { try recoverPlayback() }
         let count = AVAudioFrameCount(data.count / 2)
         // Bound latency and memory if playback cannot keep up with the network.
         guard queuedFrames + count <= 24_000 * 30 else { throw AudioError.backlog }
@@ -90,17 +177,26 @@ final class LiveAudio {
         }
         queuedFrames += count
         receivedFrames += count
+        let entry = PendingBuffer(buffer: buffer)
+        pendingBuffers.append(entry)
+        schedule(entry)
+        reportStatus()
+    }
+
+    private func schedule(_ entry: PendingBuffer) {
+        guard let player else { return }
         let generation = playbackGeneration
-        player.scheduleBuffer(buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
+        player.scheduleBuffer(entry.buffer, completionCallbackType: .dataPlayedBack) { [weak self] _ in
             DispatchQueue.main.async {
-                guard let self, self.playbackGeneration == generation else { return }
-                self.queuedFrames -= min(self.queuedFrames, count)
+                guard let self, self.playbackGeneration == generation,
+                      let index = self.pendingBuffers.firstIndex(where: { $0.id == entry.id }) else { return }
+                self.pendingBuffers.remove(at: index)
+                self.queuedFrames -= min(self.queuedFrames, entry.buffer.frameLength)
                 self.completedBuffers += 1
                 self.reportStatus()
             }
         }
         if !player.isPlaying { player.play() }
-        reportStatus()
     }
 
     func testSpeaker() throws {
@@ -114,38 +210,95 @@ final class LiveAudio {
             let bits = UInt16(bitPattern: sample)
             pcm.append(UInt8(bits & 255)); pcm.append(UInt8(bits >> 8))
         }
-        interrupt()
+        interrupt(countAsInterruption: false)
         try play(pcm)
     }
 
-    private func reportStatus() {
+    private func reportStatus(force: Bool = false) {
         guard engine != nil else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard force || now - lastStatusTime >= 0.5 else { return }
+        lastStatusTime = now
         let session = AVAudioSession.sharedInstance()
         let route = session.currentRoute.outputs.map { $0.portType == .builtInSpeaker ? "Speaker" : $0.portName }.joined(separator: ", ")
         let volume = Int((session.outputVolume * 100).rounded())
         let state = engine?.isRunning == true ? "running" : "stopped"
-        let details = "\(route.isEmpty ? "No output" : route) · volume \(volume)% · \(completedBuffers) buffers played"
+        let queued = String(format: "%.1f", Double(queuedFrames) / 24_000)
+        let received = String(format: "%.1f", Double(receivedFrames) / 24_000)
+        let details = "\(route.isEmpty ? "No output" : route) · volume \(volume)% · engine \(state) · \(received)s received · \(queued)s queued · \(completedBuffers) buffers played · \(interruptionCount) speech interruptions · \(recoveryCount) audio recoveries"
         onStatus?(details)
         logger.info("Voice engine \(state, privacy: .public); frames received=\(self.receivedFrames); buffers played=\(self.completedBuffers); volume=\(volume); route=\(route, privacy: .public)")
     }
 
-    func interrupt() {
+    func interrupt(countAsInterruption: Bool = true) {
+        if countAsInterruption { interruptionCount += 1 }
+        health.interrupted()
+        pendingBuffers.removeAll()
         playbackGeneration = UUID()
         queuedFrames = 0
         player?.stop()
         if engine?.isRunning == true { player?.play() }
+        reportStatus(force: true)
+    }
+
+    private func tearDownGraph(preservingEngine: Bool = false) {
+        if let configurationObserver { NotificationCenter.default.removeObserver(configurationObserver) }
+        configurationObserver = nil
+        if hasTap { engine?.inputNode.removeTap(onBus: 0) }
+        hasTap = false
+        player?.stop()
+        engine?.stop()
+        if let player { engine?.detach(player) }
+        player = nil
+        if preservingEngine { engine?.reset() } else { engine = nil }
     }
 
     func stop() {
+        watchdog?.cancel(); watchdog = nil
         volumeObservation = nil
-        interrupt()
-        if hasTap { engine?.inputNode.removeTap(onBus: 0) }
-        hasTap = false
-        engine?.stop()
-        player = nil
-        engine = nil
+        inputHandler = nil
+        playbackGeneration = UUID()
+        pendingBuffers.removeAll()
+        queuedFrames = 0
+        tearDownGraph()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
     }
+
+    #if DEBUG
+    /// Opt-in device check: --audio-recovery-check. No microphone data leaves the phone.
+    @MainActor func runRecoveryCheck() async -> Bool {
+        defer { stop() }
+        do {
+            try start { _ in }
+            try testSpeaker()
+            try await Task.sleep(for: .milliseconds(150))
+            engine?.pause()
+            for _ in 0..<80 {
+                if recoveryCount >= 1 && completedBuffers >= 1 && queuedFrames == 0 { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            print("AUDIO_CHECK_ENGINE recoveries=\(recoveryCount) played=\(completedBuffers) queued=\(queuedFrames) running=\(engine?.isRunning == true)")
+            guard recoveryCount >= 1, completedBuffers >= 1, queuedFrames == 0 else { return false }
+            let before = completedBuffers
+            try testSpeaker()
+            player?.pause()
+            for _ in 0..<80 {
+                if recoveryCount >= 2 && completedBuffers > before && queuedFrames == 0 { break }
+                try await Task.sleep(for: .milliseconds(100))
+            }
+            print("AUDIO_CHECK_PLAYER recoveries=\(recoveryCount) played=\(completedBuffers) queued=\(queuedFrames) running=\(engine?.isRunning == true)")
+            guard recoveryCount >= 2, completedBuffers > before, queuedFrames == 0 else { return false }
+            // Cancelling speech must discard queued samples, including during recovery.
+            try testSpeaker()
+            interrupt(countAsInterruption: false)
+            try await Task.sleep(for: .seconds(1))
+            return queuedFrames == 0 && pendingBuffers.isEmpty && engine?.isRunning == true
+        } catch {
+            print("AUDIO_CHECK_ERROR domain=\((error as NSError).domain) code=\((error as NSError).code)")
+            return false
+        }
+    }
+    #endif
 
     private enum AudioError: Error { case unavailable, backlog }
 }

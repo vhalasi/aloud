@@ -172,6 +172,11 @@ struct ContentView: View {
             .padding(24)
         }
         .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--audio-recovery-check") {
+                live.runAudioRecoveryCheck()
+            }
+            #endif
             live.onReadyForCamera = {
                 if !monitor.isRunning || monitor.isDemo { monitor.start() }
             }
