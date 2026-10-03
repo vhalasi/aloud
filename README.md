@@ -150,3 +150,10 @@ The standalone checks cover a non-silent demo starting distance, increasing puls
 ## Validation status
 
 On October 3, 2026, the TrueDepth/Core Haptics update passed signed iPhone and simulator builds with Xcode 26.4 and was installed and launched on the connected iPhone 15. The user confirmed that both changing TrueDepth distances and physical vibration work well. Simulator checks verified the unsupported-haptics message, the demo starting at 1.0 m, and stopping when leaving the app. Deterministic distance-filter, pulse-curve, and non-silent demo-default checks pass. This verifies basic operation, not calibrated distance accuracy, outdoor range, or navigation reliability. The new Gemini integration passed signed device and simulator builds, protocol fixture checks, and a real server setup handshake plus a PCM voice response using the configured key. The update is installed on the iPhone 15. On-device simultaneous voice, vision and haptics still require a physical trial.
+
+## Matrix cloud agent API
+
+The independent [Hono backend](backend/README.md) runs unattended Codex jobs on
+Matrix through a Cloudflare Worker. It exposes task submission, progress,
+cancellation and artifact downloads, with browser, shell and file access on the
+cloud computer. See the backend README for deployment and the end-to-end demo.

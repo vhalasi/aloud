@@ -38,6 +38,8 @@ assert.equal(proof.nonce,nonce); assert.equal(proof.sum,17);
 assert.equal(proof.localButtonText,'Sum: 17'); assert.equal(proof.browserUsed,true); assert.equal(proof.shellUsed,true);
 assert.equal(new URL(proof.publicURL).hostname,'www.iana.org');
 assert.match(proof.publicHeading,/Example Domains/i);
+const csv=await (await request(`/v1/jobs/${job.id}/artifact?path=numbers.csv`)).text();
+assert.deepEqual(csv.trim().split(/\r?\n/), ['value','2','3','5','7']);
 const events=await (await request(`/v1/jobs/${job.id}/events`)).json();
 assert.ok(events.items.some(item=>item.itemType==='mcp_tool_call'));
 const cancelledStatus=await (await request(`/v1/jobs/${queued.id}`)).json();
@@ -47,7 +49,10 @@ await mkdir(output,{recursive:true});
 await writeFile(resolve(output,'result.json'),JSON.stringify({job:result,proof,events,cancelledJob:cancelledStatus},null,2));
 for(const artifact of result.artifacts.filter(item=>item.path.endsWith('.png'))) {
   const response=await request(`/v1/jobs/${job.id}/artifact?path=${encodeURIComponent(artifact.path)}`);
-  await writeFile(resolve(output,artifact.path.split('/').at(-1)),Buffer.from(await response.arrayBuffer()));
+  const bytes=Buffer.from(await response.arrayBuffer());
+  assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+  assert.ok(bytes.length>1000);
+  await writeFile(resolve(output,artifact.path.split('/').at(-1)),bytes);
 }
 console.log(JSON.stringify({jobId:job.id,proof,artifacts:result.artifacts},null,2));
 console.log('PASS: auth, idempotency, cancellation, shell/files, local browser interaction, public browser navigation, artifact downloads.');
