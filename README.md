@@ -24,14 +24,14 @@ should obtain short-lived Live API tokens from a backend instead.
 Tap **Start AI**, allow microphone/camera access, and hold the phone upright with its
 **front camera / screen facing the scene**. Aloud starts depth sensing if necessary,
 briefly describes the first image, then listens for spoken questions. **Describe
-surroundings** requests another description. You can interrupt by speaking. The latest
+surroundings** requests another description. You can interrupt by speaking. If voice is silent, press the volume-up button while AI is on and tap **Test speaker** for two tones through the same playback path. **Audio details** shows the output route, volume and completed audio buffers. The latest
 question and reply appear as text. **Stop AI** ends network streaming and audio while
 local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding ends both.
 
 - Model: `gemini-3.8-live`, using the Gemini Live v1beta WebSocket API.
 - One AVCaptureSession supplies front TrueDepth measurements and unmirrored portrait
   RGB images. JPEG images stream at up to one per second only while AI is connected.
-- AVAudioEngine uses voice processing, 16 kHz mono PCM microphone input and 24 kHz
+- AVAudioEngine uses video-chat speaker routing, minimal nonvoice ducking, an explicit mixer-to-output connection, 16 kHz mono PCM microphone input and 24 kHz
   playback. Audio recording explicitly permits haptics. There are no separate STT/TTS services.
 - The app waits for setup acknowledgement, bounds outgoing/audio playback queues,
   clears playback on interruption and stops AI if camera images stop arriving. Local

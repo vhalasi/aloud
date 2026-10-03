@@ -34,6 +34,13 @@ struct ContentView: View {
                         Button("Describe surroundings", systemImage: "eye") { live.describe() }
                             .buttonStyle(.bordered)
                             .disabled(live.framesSent == 0)
+                        Button("Test speaker", systemImage: "speaker.wave.2.fill") { live.testSpeaker() }
+                            .buttonStyle(.bordered)
+                        Text("Use the volume buttons while AI is on to adjust voice volume.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        DisclosureGroup("Audio details") {
+                            Text(live.audioStatus).font(.caption)
+                        }
                         Text("Front-camera images sent: \(live.framesSent)").font(.caption)
                     }
                     if !live.heard.isEmpty {

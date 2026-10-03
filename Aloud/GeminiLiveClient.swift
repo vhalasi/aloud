@@ -10,6 +10,7 @@ final class GeminiLiveClient: ObservableObject {
     @Published private(set) var transcript = ""
     @Published private(set) var heard = ""
     @Published private(set) var framesSent = 0
+    @Published private(set) var audioStatus = "Start AI to enable voice."
     @Published private(set) var needsSettings = false
 
     var hasKey: Bool { !Self.apiKey.isEmpty }
@@ -34,6 +35,7 @@ final class GeminiLiveClient: ObservableObject {
     private var initialDescriptionSent = false
 
     init() {
+        audio.onStatus = { [weak self] text in self?.audioStatus = text }
         for name in [AVAudioSession.interruptionNotification, AVAudioSession.routeChangeNotification,
                      AVAudioSession.mediaServicesWereResetNotification] {
             observers.append(NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
@@ -177,7 +179,12 @@ final class GeminiLiveClient: ObservableObject {
             transcript = String((transcript + text).suffix(3000))
         }
         if !event.interrupted {
-            for data in event.audio { try audio.play(data) }
+            do {
+                for data in event.audio { try audio.play(data) }
+            } catch {
+                stop(message: "Voice playback failed. Tap Start AI to restart the speaker.")
+                return
+            }
         }
         if event.turnComplete { newOutputTurn = true; newInputTurn = true }
     }
@@ -189,6 +196,12 @@ final class GeminiLiveClient: ObservableObject {
         enqueue(LiveProtocol.media(jpeg, mimeType: "image/jpeg", kind: "video"))
         framesSent += 1
         if !initialDescriptionSent { initialDescriptionSent = true; describe() }
+    }
+
+    func testSpeaker() {
+        guard isConnected else { return }
+        do { try audio.testSpeaker() }
+        catch { audioStatus = "Speaker test failed. Stop AI and start it again." }
     }
 
     func describe() {
