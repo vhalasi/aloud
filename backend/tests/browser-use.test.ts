@@ -1,13 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { BrowserUse, ResearchJob } from '../src/browser-use';
+import { BrowserUse, ResearchJob, ProviderRejected } from '../src/browser-use';
 
-function fixture(options: {lost?: boolean; status?: string} = {}) {
+function fixture(options: {lost?: boolean; status?: string; rejected?: boolean} = {}) {
   let stored: any, alarm: number | undefined, creates = 0, stops = 0, cancels = 0;
   let status = options.status ?? 'running';
   const input = {id: 'job_' + 'b'.repeat(32), prompt: 'History of Stockholm City Hall', timeoutSeconds: 30};
   const provider = {
-    async create() { creates++; if (options.lost) throw new Error('lost response'); return {id: 'run', sessionId: 'session'}; },
+    async create() { creates++; if (options.rejected) throw new ProviderRejected('browser_use_credit_limit', true); if (options.lost) throw new Error('lost response'); return {id: 'run', sessionId: 'session'}; },
     async reconcile() { return {id: 'run', sessionId: 'session'}; },
     async stopBrowsers() { stops++; },
     async json(path: string) {
@@ -63,4 +63,17 @@ test('provider request uses server credential, cost limit, Flash low reasoning a
   assert.equal(captured.headers['X-Browser-Use-API-Key'],'secret');
   assert.equal(body.model,'gemini-3.6-flash'); assert.equal(body.modelParams.thinkingConfig.thinkingLevel,'low');
   assert.equal(body.maxCostUsd,.25); assert.equal(body.browserSettings.record,false); assert.equal(body.agentmail,false);
+});
+
+test('definitive credit rejection stops immediately without reconciliation or duplicate billing', async () => {
+  const f = fixture({rejected: true}); const response = await f.submit();
+  const body = await response.json() as any;
+  assert.equal(body.status, 'failed'); assert.equal(body.error, 'browser_use_credit_limit');
+  assert.equal(f.state().alarm, undefined); await f.submit(); assert.equal(f.state().creates, 1);
+});
+test('user cancellation persists across restart and stops provider run', async () => {
+  const f = fixture(); await f.submit();
+  await f.job.fetch(new Request(`https://internal/cancel?id=${f.input.id}`, {method:'POST'}));
+  await f.job.alarm();
+  assert.equal(f.state().stored.status, 'cancelled'); assert.equal(f.state().cancels, 1);
 });

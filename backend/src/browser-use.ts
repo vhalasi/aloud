@@ -4,12 +4,15 @@ export type ResearchInput = {id: string; prompt: string; timeoutSeconds: number}
 type RecordState = ResearchInput & {
   status: string; createdAt: number; deadline: number; submitted: boolean;
   runId?: string; sessionId?: string; result?: string; error?: string;
-  cancelRequested?: boolean; stopped?: boolean; cleanupPasses?: number;
+  cancelRequested?: boolean; stopped?: boolean; cleanupPasses?: number; retryDelay?: number; unresolved?: boolean;
 };
 export type BrowserBindings = {BROWSER_USE_API_KEY?: string; BROWSER_USE_MODEL?: string};
 const terminal = (s: string) => ['succeeded', 'failed', 'cancelled', 'timed_out'].includes(s);
 
 /** The provider has no documented create idempotency key. Never repeat an ambiguous POST. */
+export class ProviderRejected extends ApiError {
+  constructor(code: string, public definitive: boolean) { super(code, 503); }
+}
 export class BrowserUse {
   constructor(private env: BrowserBindings, private request: typeof fetch = fetch) {}
   async json(path: string, method = 'GET', body?: unknown): Promise<any> {
@@ -22,8 +25,8 @@ export class BrowserUse {
         ...(body === undefined ? {} : {body: JSON.stringify(body)})
       });
     } catch { throw new ApiError('browser_use_unreachable', 503); }
-    if (!response.ok) throw new ApiError(response.status === 402 ? 'browser_use_credit_limit' :
-      [401, 403].includes(response.status) ? 'browser_use_auth_required' : 'browser_use_request_failed', 503);
+    if (!response.ok) throw new ProviderRejected(response.status === 402 ? 'browser_use_credit_limit' :
+      [401, 403].includes(response.status) ? 'browser_use_auth_required' : 'browser_use_request_failed', response.status < 500 && response.status !== 408);
     return response.json();
   }
   create(job: RecordState) {
@@ -82,6 +85,7 @@ export class ResearchJob {
               job.runId = run.id; job.sessionId = run.sessionId; job.status = 'running';
             } catch (error) {
               job.error = error instanceof ApiError ? error.code : 'browser_use_unreachable';
+              if (error instanceof ProviderRejected && error.definitive) { job.status = 'failed'; job.stopped = true; }
               // Resolve lost responses by marker, never by creating another run.
             }
             await this.save(job);
@@ -104,11 +108,11 @@ export class ResearchJob {
   async alarm() { await this.serial(() => this.advance()); }
   private public(job: RecordState) {
     return {id: job.id, status: job.status, result: job.result, error: job.error,
-      provider: 'browser-use', cleanupComplete: job.stopped === true};
+      provider: 'browser-use', cleanupComplete: job.stopped === true && !job.unresolved};
   }
   private async save(job: RecordState) {
     await this.ctx.storage.put('job', job);
-    if (!job.stopped) await this.ctx.storage.setAlarm(Date.now() + 2000);
+    if (!job.stopped) await this.ctx.storage.setAlarm(Date.now() + (job.retryDelay ?? (terminal(job.status) ? 15_000 : 2000)));
     else await this.ctx.storage.deleteAlarm();
   }
   private async advance() {
@@ -121,7 +125,7 @@ export class ResearchJob {
         else {
           if (Date.now() > job.deadline) job.status = job.cancelRequested ? 'cancelled' : 'failed';
           // Keep reconciling a late provider acceptance for ten minutes; never redispatch.
-          if (Date.now() > job.deadline + 600_000) job.stopped = true;
+          if (Date.now() > job.deadline + 600_000) { job.stopped = true; job.unresolved = true; job.error = 'browser_use_dispatch_unconfirmed'; }
           await this.save(job); return;
         }
       }
@@ -139,6 +143,7 @@ export class ResearchJob {
         else if (run.status === 'failed') { job.status = 'failed'; job.error = 'browser_use_run_failed'; }
         else job.status = 'running';
       }
+      job.retryDelay = undefined;
       if (terminal(job.status) && job.sessionId) {
         await this.provider.stopBrowsers(job.sessionId);
         // A cancelled worker can finish one last step and provision a browser late.
@@ -147,6 +152,7 @@ export class ResearchJob {
       }
     } catch (error) {
       job.error = error instanceof ApiError ? error.code : 'browser_use_unreachable';
+      job.retryDelay = Math.min((job.retryDelay ?? 2000) * 2, 60_000);
       // No raw upstream error bodies or credentials in responses/logs.
     }
     await this.save(job);

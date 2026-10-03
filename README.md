@@ -158,10 +158,12 @@ The standalone checks cover a non-silent demo starting distance, increasing puls
 
 On October 3, 2026, the TrueDepth/Core Haptics update passed signed iPhone and simulator builds with Xcode 26.4 and was installed and launched on the connected iPhone 15. The user confirmed that both changing TrueDepth distances and physical vibration work well. Simulator checks verified the unsupported-haptics message, the demo starting at 1.0 m, and stopping when leaving the app. Deterministic distance-filter, pulse-curve, and non-silent demo-default checks pass. This verifies basic operation, not calibrated distance accuracy, outdoor range, or navigation reliability. The new Gemini integration passed signed device and simulator builds, protocol fixture checks, and a real server setup handshake plus a PCM voice response using the configured key. The update is installed on the iPhone 15. On-device simultaneous voice, vision and haptics still require a physical trial.
 
-## Matrix cloud agent API
+## Browser Use research and Matrix computer tools
 
 The [Hono backend](backend/README.md) runs unattended Codex jobs on Matrix through
-a Cloudflare Worker. The voice agent now uses it for deeper web research.
+a Cloudflare Worker. Web research uses Browser Use Cloud with Gemini 3.6 Flash
+(low reasoning). Matrix and Codex remain available for files, calculations and
+other requested cloud computer tasks through `run_matrix_task`.
 
 Start AI and ask **“Look up the history of Stockholm City Hall”** or **“Research
 this museum’s official accessibility information.”** Name the place if its identity
@@ -171,20 +173,21 @@ while it works. Ask **“How is the research going?”** or **“Cancel that res
 there is also a **Cancel research** button and an expandable result/source view.
 
 - `research_surroundings` is a non-blocking Gemini Live tool. The app submits an
-  authenticated Matrix job and polls it independently of Places, camera and audio.
+  authenticated Browser Use job and polls it independently of Places, camera and audio.
   `get_research_status` and `cancel_research` provide voice controls. Results use
   `WHEN_IDLE` scheduling so they wait for the current response to finish.
 - The app includes a fresh Core Location fix only when the question needs it.
   Its accuracy and timestamp travel with it; a location snapshot cannot identify
   a building or provide real-time navigation. Camera frames and microphone audio
-  continue going to Gemini and are not streamed to Matrix.
-- The Matrix task receives the question and optional location through Cloudflare;
-  Codex/OpenAI and browser sources process the research. Job data persists on Matrix
-  under the backend's job directories. The app keeps results only for the live session.
+  continue going to Gemini Live and are not streamed to Browser Use or Matrix.
+- Browser Use receives the question and optional location through Cloudflare;
+  Google Gemini and browser sources process the research. Job data persists in
+  Cloudflare Durable Objects and Browser Use history. Matrix tasks instead use
+  Matrix/Codex and persist in its job directories. The app keeps results only for the live session.
 - Research from the app is read-only: it does not book, buy, change accounts or send
   messages. Local depth and haptics remain independent of research results.
 - There is one research task per app session. Retries reuse an idempotency key.
-  Remote execution is capped at five minutes; app polling has a six-minute limit.
+  Browser Use runs have a $0.25 provider cost cap and a five-minute server deadline; app polling has a six-minute limit.
   Stopping AI, backgrounding, or tool cancellation drops stale responses and requests
   remote cancellation. Cancellation is best effort when the network/app is unavailable;
   the server deadline still applies. Stop cannot undo completed actions.
@@ -201,9 +204,11 @@ backend README; it does not require rebuilding the app unless the API token chan
 Validation on October 3, 2026: signed device and simulator builds passed, along
 with protocol/client fixtures for retry identity, authentication failures, a single
 active job, cancellation, deadlines and stale sessions. A real Gemini Live session
-invoked research, the exact Swift app service called the deployed Matrix API,
+invoked Browser Use research through the exact Swift app service,
 and Gemini answered a second question during research before speaking the sourced
-result (406,562 PCM bytes). Physical microphone/camera/haptics still require an
+result (391,200 PCM bytes). A simple IANA lookup took 13.3 seconds at the provider
+and cost $0.021786; a repeat took 47.1 seconds end to end, so latency varies. The signed update was
+installed and launched on the connected iPhone 15. Physical microphone/camera/haptics still require an
 on-device check; simulator tests cannot establish those behaviors.
 
 ```sh

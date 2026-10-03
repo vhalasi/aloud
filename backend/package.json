@@ -10,7 +10,8 @@
     "test:runner": "python3 -m unittest discover -s tests -p 'test_*.py'",
     "configure": "node scripts/configure-local.mjs",
     "install:matrix": "node scripts/install-matrix.mjs",
-    "smoke": "node scripts/smoke.mjs"
+    "smoke": "node scripts/smoke.mjs",
+    "smoke:browser": "node scripts/smoke-browser.mjs"
   },
   "dependencies": {
     "hono": "^4.0.0",

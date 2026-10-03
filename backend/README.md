@@ -1,6 +1,6 @@
-# Aloud Matrix API
+# Aloud cloud tools API
 
-A Hono API deployed as a Cloudflare Worker. It accepts natural-language tasks and runs Codex on your Matrix cloud computer with **YOLO mode**, automatic MCP approvals, browser access, shell access and persistent files. The iPhone app invokes this API for background web research through its Gemini Live tools; see the root README for usage.
+A Hono API deployed as a Cloudflare Worker. It accepts natural-language tasks and runs Codex on your Matrix cloud computer with **YOLO mode**, automatic MCP approvals, browser access, shell access and persistent files. The iPhone routes web research through Browser Use and retains Matrix for requested computer tasks. Both providers share this authenticated Worker; see the root README for voice usage.
 
 ```mermaid
 sequenceDiagram
@@ -19,6 +19,51 @@ sequenceDiagram
   Worker->>Matrix: Read job state or artifact
   Matrix-->>Client: Status, result or file via Worker
 ```
+
+## Browser Use research
+
+`POST /v1/research` accepts `{prompt, timeoutSeconds?}` with a required
+`Idempotency-Key` (8–128 letters, digits, underscores or hyphens).
+Poll `GET /v1/research/:id`; cancel with `POST /v1/research/:id/cancel`.
+These use the same bearer token and job/status format as Matrix below.
+Web research uses Browser Use Cloud API V4, `gemini-3.6-flash`, low reasoning,
+no browser recording, no shared login profile, and `maxCostUsd: 0.25` per run.
+The API key is a **Cloudflare secret**, `BROWSER_USE_API_KEY`, never embedded in iOS.
+
+A Durable Object per job serializes submissions and persists the provider run ID.
+The provider does not document create idempotency: lost/ambiguous responses are
+reconciled using a unique task marker, never retried as a new paid run. A definitive
+rejection (including exhausted credits) fails immediately. A cancel arriving before
+submission creates a tombstone. Alarms poll independently of the phone, enforce the
+submission-time deadline, and stop owned browsers on completion/cancellation.
+Cleanup retries temporary errors with backoff; `cleanupComplete` confirms cleanup.
+A lost submission is reconciled for up to ten minutes beyond its deadline; an
+unresolvable provider outage can prevent confirmation. Cost caps are provider
+limits, not a guarantee of exact billing. No auto-recharge is configured here.
+
+Questions, optional location snapshots, and results persist in Durable Object and
+Browser Use job history; there is no automatic retention deletion in this prototype.
+The app asks for short, sourced, read-only research. Browser Use receives no camera
+frames, microphone audio, account cookies, or Matrix credentials. Matrix routes and
+its installed browser MCP remain available separately.
+
+Add `BROWSER_USE_API_KEY` to the ignored `.secrets.json` and `.dev.vars`, then run
+`npx wrangler secret bulk .secrets.json` and `npm run deploy`. Matrix credential
+renewal preserves this key. The default model must support Google's
+`thinkingConfig.thinkingLevel` parameter; changing provider requires changing
+that request parameter too.
+
+`npm run smoke:browser -- https://aloud-matrix-api.max-766.workers.dev` is an **opt-in paid live check**: verifies a sourced answer,
+retry identity, cancellation, browser cleanup and retained Matrix connectivity.
+On 2026-10-03 the first IANA lookup completed at the provider in 13.3 seconds and
+cost $0.021786. A repeat completed at the provider in 44.7 seconds (47.1 seconds
+including API submission/polling). Browser Use latency varies; these are simple
+single-page lookups, not a general latency promise. The live Gemini/Swift flow
+returned spoken audio while allowing a second conversation turn.
+
+References: [V4 runs](https://docs.browser-use.com/cloud/api-v4/runs/create-run),
+[reasoning controls](https://docs.browser-use.com/cloud/agent/thinking-levels),
+[browser lifecycle](https://docs.browser-use.com/cloud/browser/quickstart).
 
 ## Try the deployed API
 
@@ -86,7 +131,7 @@ npm run deploy
 npx wrangler secret bulk .secrets.json
 ```
 
-`npm run configure` creates local ignored credentials with mode 0600, preserving the existing API token. It does not print secrets. Use `MATRIX_PROFILE` to select another local profile. Worker runtime origins, slot and runner path are in `wrangler.jsonc`; the installer defaults to the same primary Matrix computer and path.
+`npm run configure` creates local ignored credentials with mode 0600, preserving the existing API token and other provider secrets. It does not print secrets. Use `MATRIX_PROFILE` to select another local profile. Worker runtime origins, slot and runner path are in `wrangler.jsonc`; the installer defaults to the same primary Matrix computer and path.
 
 Matrix principal tokens expire. The initial deployment's token expires **2026-10-04 11:28 UTC**. After renewing Matrix CLI authentication, run `npm run configure` and `npx wrangler secret bulk .secrets.json` again. This example does **not** refresh credentials automatically; expired/revoked access returns `503 matrix_auth_required`. Codex uses the existing ChatGPT login on Matrix and its account limits.
 
