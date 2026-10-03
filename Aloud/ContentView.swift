@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var monitor = ProximityMonitor()
+    @StateObject private var live = GeminiLiveClient()
     @Environment(\.scenePhase) private var scenePhase
 
     private var signal: ProximitySignal? {
@@ -14,6 +15,41 @@ struct ContentView: View {
                 Text("Aloud")
                     .font(.largeTitle.bold())
                     .accessibilityAddTraits(.isHeader)
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("See with Aloud").font(.title2.bold())
+                    Text(live.status).font(.callout)
+                    if live.isActive {
+                        Button("Stop AI", systemImage: "mic.slash.fill") { live.stop() }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("Start AI", systemImage: "mic.fill") { live.start() }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!live.hasKey || !monitor.usesTrueDepth)
+                    }
+                    if !live.hasKey {
+                        Text("The developer needs to add the API key and rebuild this app.")
+                            .font(.footnote)
+                    }
+                    if live.isConnected {
+                        Button("Describe surroundings", systemImage: "eye") { live.describe() }
+                            .buttonStyle(.bordered)
+                            .disabled(live.framesSent == 0)
+                        Text("Front-camera images sent: \(live.framesSent)").font(.caption)
+                    }
+                    if !live.heard.isEmpty {
+                        Text("You: \(live.heard)").font(.callout).foregroundStyle(.secondary)
+                    }
+                    if !live.transcript.isEmpty {
+                        Text(live.transcript).font(.body).textSelection(.enabled)
+                    }
+                    Text("While AI is on, microphone audio and front-camera images are sent to Google Gemini. Hold the phone upright, screen facing what you want described.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                .controlSize(.large)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+                .background(.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 20))
+
                 Text("Feel what’s ahead.")
                     .font(.title2.weight(.semibold))
                 Text(monitor.cameraInstruction)
@@ -61,7 +97,7 @@ struct ContentView: View {
                 }
 
                 if monitor.isRunning {
-                    Button("Stop", systemImage: "stop.fill") { monitor.stop() }
+                    Button("Stop sensing and AI", systemImage: "stop.fill") { live.stop(); monitor.stop() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
                 } else {
@@ -74,7 +110,7 @@ struct ContentView: View {
                         .controlSize(.large)
                 }
 
-                if monitor.needsSettings {
+                if monitor.needsSettings || live.needsSettings {
                     Button("Open Settings") {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
@@ -89,15 +125,33 @@ struct ContentView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(24)
         }
+        .onAppear {
+            live.onReadyForCamera = {
+                if !monitor.isRunning || monitor.isDemo { monitor.start() }
+            }
+            live.onStreamingChanged = { streaming in
+                if streaming {
+                    monitor.setVideoHandler { [weak live] jpeg in
+                        Task { @MainActor in live?.sendFrame(jpeg) }
+                    }
+                } else {
+                    monitor.setVideoHandler(nil)
+                }
+            }
+        }
+        .onChange(of: monitor.isRunning) { _, running in
+            if !running && live.isConnected { live.stop(message: "Camera stopped. Tap Start AI to reconnect.") }
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { monitor.applicationBecameActive() }
             // Permission prompts temporarily make the app inactive. Stop an active
             // session then, but allow the first permission request to complete.
             if phase == .background || (phase == .inactive && monitor.isRunning) {
+                if phase == .background || live.isConnected { live.stop() }
                 monitor.stop()
             }
         }
-        .onDisappear { monitor.stop() }
+        .onDisappear { live.stop(); monitor.stop() }
     }
 }
 

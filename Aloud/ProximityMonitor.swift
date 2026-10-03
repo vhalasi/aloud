@@ -72,6 +72,10 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         }
     }
 
+    func setVideoHandler(_ handler: ((Data) -> Void)?) {
+        trueDepth.setVideoHandler(handler)
+    }
+
     func startDemo() {
         stop()
         needsSettings = false

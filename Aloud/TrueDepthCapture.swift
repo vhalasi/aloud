@@ -1,8 +1,9 @@
 import AVFoundation
 import CoreVideo
+import CoreImage
 import os
 
-final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate {
+final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate, AVCaptureVideoDataOutputSampleBufferDelegate {
     static var isSupported: Bool {
         AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front) != nil
     }
@@ -10,6 +11,10 @@ final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate {
     private let session = AVCaptureSession()
     private let queue = DispatchQueue(label: "com.vhalasi.aloud.truedepth")
     private let output = AVCaptureDepthDataOutput()
+    private let videoOutput = AVCaptureVideoDataOutput()
+    private let imageContext = CIContext()
+    private var videoHandler: ((Data) -> Void)?
+    private var lastVideoFrame: TimeInterval = 0
     private let logger = Logger(subsystem: "com.vhalasi.aloud", category: "TrueDepth")
     private var configured = false
     private var active = false
@@ -73,6 +78,24 @@ final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate {
         }
     }
 
+    /// RGB comes from the same front-camera session as depth, avoiding camera contention.
+    func setVideoHandler(_ handler: ((Data) -> Void)?) {
+        queue.async { self.videoHandler = handler; self.lastVideoFrame = 0 }
+    }
+
+    func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard active, let videoHandler else { return }
+        let now = ProcessInfo.processInfo.systemUptime
+        guard now - lastVideoFrame >= 1,
+              let buffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        lastVideoFrame = now
+        let image = CIImage(cvPixelBuffer: buffer)
+        guard let jpeg = imageContext.jpegRepresentation(of: image, colorSpace: CGColorSpaceCreateDeviceRGB(),
+            options: [kCGImageDestinationLossyCompressionQuality as CIImageRepresentationOption: 0.65]) else { return }
+        videoHandler(jpeg)
+    }
+
     private func configure() throws {
         guard let camera = AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front) else {
             throw CaptureError.unsupported
@@ -88,6 +111,18 @@ final class TrueDepthCapture: NSObject, AVCaptureDepthDataOutputDelegate {
         session.addInput(input)
         session.addOutput(output)
         session.sessionPreset = .vga640x480
+        guard session.canAddOutput(videoOutput) else { throw CaptureError.unsupported }
+        session.addOutput(videoOutput)
+        videoOutput.alwaysDiscardsLateVideoFrames = true
+        videoOutput.videoSettings = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA]
+        videoOutput.setSampleBufferDelegate(self, queue: queue)
+        if let connection = videoOutput.connection(with: .video) {
+            if connection.isVideoRotationAngleSupported(90) { connection.videoRotationAngle = 90 }
+            if connection.isVideoMirroringSupported {
+                connection.automaticallyAdjustsVideoMirroring = false
+                connection.isVideoMirrored = false
+            }
+        }
         output.isFilteringEnabled = false
         output.alwaysDiscardsLateDepthData = true
         output.setDelegate(self, callbackQueue: queue)

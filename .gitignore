@@ -6,3 +6,6 @@ xcuserdata/
 .env
 .env.*
 !.env.example
+
+# Shared hackathon credential, injected at build time
+LocalSecrets.xcconfig
