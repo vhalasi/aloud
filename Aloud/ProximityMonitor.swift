@@ -30,6 +30,8 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
     private let trueDepth = TrueDepthCapture()
     private var testStop: DispatchWorkItem?
     private var timer: Timer?
+    private var proximityHandler: ((ProximitySnapshot) -> Void)?
+    private var lastContextUpdate: TimeInterval = 0
     private var lastPulse: TimeInterval = 0
     private var lastReading: TimeInterval = 0
     private var lastFrame: TimeInterval = 0
@@ -76,6 +78,19 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         trueDepth.setVideoHandler(handler)
     }
 
+    func setProximityHandler(_ handler: ((ProximitySnapshot) -> Void)?) {
+        proximityHandler = handler
+        publishProximity()
+    }
+
+    private func publishProximity() {
+        let now = ProcessInfo.processInfo.systemUptime
+        proximityHandler?(ProximitySnapshot(distance: distance, sampledAt: lastReading,
+            observedAt: Date().addingTimeInterval(-max(0, now - lastReading)),
+            source: usesTrueDepth ? "front_truedepth" : "rear_lidar",
+            isRunning: isRunning, isDemo: isDemo))
+    }
+
     func startDemo() {
         stop()
         needsSettings = false
@@ -103,6 +118,8 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
         lastPulse = 0
         lastReading = 0
         lastFrame = 0
+        lastContextUpdate = 0
+        publishProximity()
         depthWasUnavailable = false
         UIApplication.shared.isIdleTimerDisabled = false
         message = supportsDepth ? "Stopped" : "No depth camera available. Try demo pulses."
@@ -184,6 +201,10 @@ final class ProximityMonitor: NSObject, ObservableObject, ARSessionDelegate {
                 UIAccessibility.post(notification: .announcement, argument: message)
                 depthWasUnavailable = true
             }
+        }
+        if now - lastContextUpdate >= 0.1 {
+            publishProximity()
+            lastContextUpdate = now
         }
         guard let distance, let signal = ProximitySignal.at(distance: distance) else {
             lastPulse = 0

@@ -88,7 +88,7 @@ struct ContentView: View {
                     if !live.transcript.isEmpty {
                         Text(live.transcript).font(.body).textSelection(.enabled)
                     }
-                    Text("While AI is on, microphone audio and front-camera images are sent to Google Gemini. Hold the phone upright, screen facing what you want described.")
+                    Text("While AI is on, microphone audio, front-camera images and proximity readings are sent to Google Gemini. Hold the phone upright, screen facing what you want described.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 .controlSize(.large)
@@ -182,11 +182,15 @@ struct ContentView: View {
             }
             live.onStreamingChanged = { streaming in
                 if streaming {
+                    monitor.setProximityHandler { [weak live] snapshot in
+                        live?.sendProximity(snapshot)
+                    }
                     monitor.setVideoHandler { [weak live] jpeg in
                         Task { @MainActor in live?.sendFrame(jpeg) }
                     }
                 } else {
                     monitor.setVideoHandler(nil)
+                    monitor.setProximityHandler(nil)
                 }
             }
         }

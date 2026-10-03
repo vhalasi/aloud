@@ -29,9 +29,9 @@ struct LiveProtocolChecks {
         assert((LiveProtocol.describe()["clientContent"] as! [String: Any])["turnComplete"] as? Bool == true)
         let enabled = LiveProtocol.setup(placesEnabled: true)["setup"] as! [String: Any]
         let declarations = ((enabled["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
-        assert(declarations.count == 3)
+        assert(declarations.count == 4)
         let baseline = ((setup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]])
-        assert(baseline.count == 1 && baseline[0]["name"] as? String == "get_current_location")
+        assert(baseline.count == 2 && baseline[0]["name"] as? String == "get_current_location")
         let locationCall = tryParse(#"{"toolCall":{"functionCalls":[{"id":"gps-1","name":"get_current_location","args":{}}]}}"#).toolCalls[0]
         assert(locationCall.name == "get_current_location" && locationCall.arguments.isEmpty)
         let toolEvent = tryParse(#"{"toolCall":{"functionCalls":[{"id":"search-1","name":"find_nearby_places","args":{"category":"restaurant","radius_metres":800}},{"name":"missing_id"}]}}"#)
@@ -46,9 +46,13 @@ struct LiveProtocolChecks {
         _ = try JSONSerialization.data(withJSONObject: reply)
         let researchSetup = LiveProtocol.setup(placesEnabled: true, researchEnabled: true)["setup"] as! [String: Any]
         let researchDeclarations = (researchSetup["tools"] as! [[String: Any]])[0]["functionDeclarations"] as! [[String: Any]]
-        assert(researchDeclarations.count == 7)
+        assert(researchDeclarations.count == 8)
         assert(researchDeclarations.filter { ($0["name"] as? String)?.contains("research") == true }.allSatisfy { $0["behavior"] as? String == "NON_BLOCKING" })
         assert(researchDeclarations.contains { $0["name"] as? String == "run_matrix_task" })
+        assert(baseline.contains { $0["name"] as? String == "get_proximity_status" })
+        let sensor = LiveProtocol.proximity(["status": "measured", "distance_metres": 0.5])
+        assert((sensor["realtimeInput"] as! [String: String])["text"]!.hasPrefix("PROXIMITY_SENSOR_UPDATE "))
+        assert(sensor["clientContent"] == nil)
         let researchCall = LiveProtocol.ToolCall(id: "research-1", name: "research_surroundings", arguments: [:])
         let researchReply = LiveProtocol.toolResponse(researchCall, result: ["result": "Sourced answer"], scheduling: "WHEN_IDLE")
         let functionReply = ((researchReply["toolResponse"] as! [String: Any])["functionResponses"] as! [[String: Any]])[0]

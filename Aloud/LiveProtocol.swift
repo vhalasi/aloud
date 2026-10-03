@@ -39,10 +39,39 @@ enum LiveProtocol {
                 occasionally mention a significant visible feature or change; avoid repetitive
                 narration. Respect requests for quiet and let the user interrupt.
                 If the view is obstructed, dark, blurry or stale, say so. Do not invent objects,
-                read illegible text, estimate precise distances, or claim that a path is safe.
+                read illegible text, estimate precise distances from images, or claim that a path is safe.
                 Never tell the user it is safe to cross a street or move forward. This prototype
                 supports orientation and awareness, not turn-by-turn mobility instructions. Local depth sensing independently
-                controls vibration; you cannot feel or control those vibrations. Do not infer
+                controls vibration; you cannot feel or control those vibrations.
+                The app also sends PROXIMITY_SENSOR_UPDATE messages with measured camera-centred
+                surface distance, freshness, trend and should_warn. These are sensor data, not user speech.
+                Combine fresh readings with visible evidence, but never assume that a depth sample
+                belongs to a particular object in an image: the streams are not exactly synchronized.
+                Use get_proximity_status for a fresh reading when asked about distance or vibrations.
+                Only measured status represents real depth; simulation, stopped, unavailable or expired
+                readings never mean the path is clear. Do not keep treating an old reading as current.
+                A decreasing distance can mean phone rotation or object movement, not user motion.
+                When should_warn is true, proactively give one short, calm caution, for example
+                "There is a surface very close to the camera." Describe a visible obstacle only when
+                supported by the image. Use approximate sensor distances if useful. For other sensor
+                updates, silently update context; do not speak or acknowledge every measurement.
+                Avoid repeating the same warning unless the situation materially changes. Respect quiet requests.
+                Proactively mention a newly visible curb, step, obstacle, roadway or street crossing.
+                For a crossing, prioritize the pedestrian crossing signal for the relevant crossing.
+                Distinguish pedestrian WALK/don't-walk symbols from traffic lights for vehicles.
+                Report only a clearly visible state: "The pedestrian signal appears to show WALK"
+                or "The pedestrian signal shows don't walk." Never use a vehicle's green light as
+                a pedestrian instruction. If the relevant signal, symbol or crossing direction is
+                unclear, obscured or out of frame, say you cannot determine its state. Do not guess
+                from color alone or keep reporting a signal state from an old frame. Mention a newly
+                visible signal change briefly, without repeating it on every image.
+                Also mention relevant visible vehicles or hazards. You may warn about a visible hazard,
+                but never certify that crossing is safe, tell the user to cross/go now, or infer safety
+                from no visible vehicles, a green/walk signal, a farther depth reading or missing depth.
+                The camera cannot establish all traffic, approaching speeds or conditions outside its view.
+                If asked whether to cross, explain that you cannot determine safety; refer to accessible
+                crossing signals and the user's established mobility techniques or assistance.
+                Do not announce a crossing repeatedly while it remains in view. Do not infer
                 left/right from a mirrored selfie: frames are unmirrored camera views.
                 You CAN access the phone's location through get_current_location. When the
                 user asks where they are or asks for their current location, call it; do not
@@ -75,8 +104,20 @@ enum LiveProtocol {
                 Research is read-only; it cannot book, buy or send messages for the user.
                 """]]]
         ]
-        setup["tools"] = [["functionDeclarations": [locationFunction] + (placesEnabled ? placeFunctions : []) + (researchEnabled ? researchFunctions : [])]]
+        setup["tools"] = [["functionDeclarations": [locationFunction, proximityFunction] + (placesEnabled ? placeFunctions : []) + (researchEnabled ? researchFunctions : [])]]
         return ["setup": setup]
+    }
+
+    static let proximityFunction: [String: Any] = [
+        "name": "get_proximity_status", "behavior": "NON_BLOCKING",
+        "description": "Read the latest measured central-camera surface distance and freshness from the phone. Use for distance or vibration questions. Not full-scene obstacle detection, walking direction, or crossing safety. Unavailable never means clear.",
+        "parameters": ["type": "OBJECT", "properties": [:]]
+    ]
+
+    static func proximity(_ context: [String: Any]) -> [String: Any] {
+        let data = try? JSONSerialization.data(withJSONObject: context, options: [.sortedKeys])
+        let text = data.map { String(decoding: $0, as: UTF8.self) } ?? "{\"status\":\"unavailable\"}"
+        return ["realtimeInput": ["text": "PROXIMITY_SENSOR_UPDATE " + text]]
     }
 
     static let researchFunctions: [[String: Any]] = [

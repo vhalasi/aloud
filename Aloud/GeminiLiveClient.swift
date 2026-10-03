@@ -46,6 +46,9 @@ final class GeminiLiveClient: ObservableObject {
     private var observers: [NSObjectProtocol] = []
     private var cameraWatchdog: Task<Void, Never>?
     private var lastCameraFrame: TimeInterval = 0
+    private var proximityReporter = ProximityReporter()
+    private var greetingComplete = false
+    private var modelIsResponding = false
     private var newOutputTurn = true
     private var newInputTurn = true
 
@@ -186,6 +189,10 @@ final class GeminiLiveClient: ObservableObject {
         for call in event.toolCalls {
             guard !handledToolIDs.contains(call.id) else { continue }
             handledToolIDs.insert(call.id)
+            if call.name == "get_proximity_status" {
+                enqueue(LiveProtocol.toolResponse(call, result: proximityReporter.currentContext(now: ProcessInfo.processInfo.systemUptime)))
+                continue
+            }
             if ["research_surroundings", "run_matrix_task", "get_research_status", "cancel_research"].contains(call.name) {
                 handleResearch(call, token: token)
                 continue
@@ -249,6 +256,7 @@ final class GeminiLiveClient: ObservableObject {
             }
         }
         if event.interrupted {
+            modelIsResponding = false
             audio.interrupt()
             newOutputTurn = true
         }
@@ -256,6 +264,7 @@ final class GeminiLiveClient: ObservableObject {
             if newInputTurn { heard = ""; newInputTurn = false }
             heard = String((heard + text).suffix(1500))
         }
+        if !event.audio.isEmpty || event.outputText != nil { modelIsResponding = true }
         if let text = event.outputText {
             if newOutputTurn { transcript = ""; newOutputTurn = false }
             transcript = String((transcript + text).suffix(3000))
@@ -268,7 +277,10 @@ final class GeminiLiveClient: ObservableObject {
                 return
             }
         }
-        if event.turnComplete { newOutputTurn = true; newInputTurn = true }
+        if event.turnComplete {
+            newOutputTurn = true; newInputTurn = true
+            greetingComplete = true; modelIsResponding = false
+        }
     }
 
     private func handleResearch(_ call: LiveProtocol.ToolCall, token: UUID) {
@@ -330,6 +342,16 @@ final class GeminiLiveClient: ObservableObject {
         if !research.cancel() { researchTask?.cancel() }
     }
 
+    func sendProximity(_ snapshot: ProximitySnapshot) {
+        guard isConnected else { return }
+        proximityReporter.update(snapshot)
+        // Coalesce while speaking or congested; send a fresh reading when the turn finishes.
+        // Local vibration remains immediate and never depends on this path.
+        guard greetingComplete, !modelIsResponding, pending.count < 5,
+              let event = proximityReporter.nextEvent(now: ProcessInfo.processInfo.systemUptime) else { return }
+        enqueue(LiveProtocol.proximity(event))
+    }
+
     func sendFrame(_ jpeg: Data) {
         guard isConnected else { return }
         lastCameraFrame = ProcessInfo.processInfo.systemUptime
@@ -386,6 +408,8 @@ final class GeminiLiveClient: ObservableObject {
         researchResult = ""
         isResearching = false
         places.reset()
+        proximityReporter = ProximityReporter()
+        greetingComplete = false; modelIsResponding = false
         isConnected = false
         isActive = false
         onStreamingChanged?(false)
