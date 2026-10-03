@@ -5,12 +5,35 @@ An iPhone hackathon prototype with local proximity haptics and a Gemini Live voi
 ## Try it
 
 1. Open `Aloud.xcodeproj` in Xcode and select the **Aloud** scheme.
-2. For real sensing, select a connected **iPhone with a front TrueDepth camera** (including iPhone 15) or a LiDAR-equipped iPhone, choose your development team under **Signing & Capabilities**, and run. The bundle identifier is `com.vhalasi.aloud`; change it if your team requires another one.
-3. Tap **Start sensing** and allow camera access. With TrueDepth, point the **front camera at the surface, screen facing away from you**. Keep fingers clear of the Dynamic Island / notch. Start with a nearby object around 30–80 cm away; usable range must be tested, not assumed.
-4. Tap **Test vibration** for one strong 350 ms pulse. If nothing is felt, check **Settings → Accessibility → Touch → Vibration**. The haptic status reports engine errors or unsupported hardware; successful playback does not prove the user felt it.
-5. Begin stationary with a sighted helper moving a large, matte obstacle toward the phone. Pulses should become faster and stronger as the obstacle gets closer. Tap **Stop** to end sensing.
+2. Select a connected **iPhone with a front TrueDepth camera** (including iPhone 15), choose your development team under **Signing & Capabilities**, and run. The bundle identifier is `com.vhalasi.aloud`; change it if your team requires another one.
+3. Tap the single **Start** button and allow microphone/camera access. It starts voice and proximity sensing together. Point the **front camera at the surface, screen facing away from you**. Keep fingers clear of the Dynamic Island / notch. Start with a nearby object around 30–80 cm away; usable range must be tested, not assumed.
+4. The voice orb follows rendered playback amplitude. The proximity meter fills and changes from mint to amber/coral as something gets closer, alongside the local vibrations. Missing depth is labelled unavailable, never clear.
+5. The top-right **…** opens session details, conversation text, research sources, Google Maps results, and optional speaker/vibration tests. **End session** stops voice, sensing and haptics together. There are no startup test tones.
 
-The deployment target is iOS 17.0. TrueDepth is preferred when `AVCaptureDevice.default(.builtInTrueDepthCamera, for: .video, position: .front)` is available. Otherwise the existing rear LiDAR implementation is used when supported. The simulator has neither live depth nor physical haptics. **Try demo pulses** works without camera access and resets to 1 metre so it immediately requests pulses: move the simulated-distance slider left to increase pulse frequency.
+The deployment target is iOS 17.0. The live experience requires front TrueDepth;
+the rear LiDAR sensing implementation remains in the project. The simulator has
+neither live depth nor physical haptics. Debug-only `--ui-preview idle`, `listening`,
+`speaking`, `near`, and `connecting` fixtures render labelled visual previews without
+starting microphone, camera, network or haptics. They do not simulate real measurements.
+
+## Voice interface
+
+The main screen has one Start/End action and a quiet details button. A layered
+mint/blue orb deforms with a smoothed RMS meter from rendered player samples,
+not incoming network chunks. The meter is sampled at 20 Hz and clears on stop,
+interruption or stalled rendering. Idle/Reduce Motion views do not continuously
+animate. The camera-centred proximity display includes metres, a text state and
+an increasing warm glow; meaning is not conveyed by color alone.
+
+Controls have VoiceOver labels and at least 48-point targets. Text scales with
+Dynamic Type, long layouts scroll, and Reduce Motion disables continuous orb
+motion and proximity pulses. Inactive/error sessions stop both subsystems. Opening
+session details does not stop an active session.
+
+On 2026-10-03, idle/speaking/nearby layouts and accessibility-sized text were inspected
+in the simulator. Signed iPhone and simulator builds passed. The connected iPhone
+passed induced playback recovery and metering checks before the launch-triggered
+test was removed; the final app was installed and launched normally.
 
 ## Live voice and front-camera vision
 
@@ -21,11 +44,11 @@ on the `GEMINI_API_KEY =` line, save, and rebuild. This local file is ignored by
 extractable from the app; this is for private hackathon testing. A distributed app
 should obtain short-lived Live API tokens from a backend instead.
 
-Tap **Start AI**, allow microphone/camera access, and hold the phone upright with its
+Tap **Start**, allow microphone/camera access, and hold the phone upright with its
 **front camera / screen facing the scene**. Aloud starts depth sensing if necessary,
 greets you briefly, then listens for spoken questions and highlights useful visible changes.
-The greeting does not mention missing images while the camera starts. **Describe
-surroundings** requests another description. You can interrupt by speaking. If voice is silent, press the volume-up button while AI is on and tap **Test speaker** for two tones through the same playback path. **Audio details** shows the output route, volume, engine state, seconds of audio
+The greeting does not mention missing images while the camera starts. In session
+details, **Describe surroundings** requests another description. You can interrupt by speaking. If voice is silent, press the volume-up button while AI is on and tap **Test speaker** for two tones through the same playback path. **Session details → Diagnostics** shows the output route, volume, engine state, seconds of audio
 received and queued, completed buffers, server speech interruptions and automatic
 recovery count. A half-second watchdog detects stopped engines and stalled render
 clocks, rebuilds playback on the existing voice-processing engine, and reschedules
@@ -33,8 +56,8 @@ unplayed audio. Silence between turns is not a playback failure. Recovery is bou
 persistent failures ask you to restart AI. Interrupted speech is discarded and never
 replayed by recovery. These counters distinguish missing incoming speech from queued
 speech that is not advancing; they cannot prove that sound was physically audible. The latest
-question and reply appear as text. **Stop AI** ends network streaming and audio while
-local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding ends both.
+question and reply appear in session details. **End session**, backgrounding, or
+a failed voice session stops both AI and proximity sensing.
 
 - Model: `gemini-3.8-live`, using the Gemini Live v1beta WebSocket API.
 - One AVCaptureSession supplies front TrueDepth measurements and unmirrored portrait
@@ -42,10 +65,10 @@ local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding e
 - AVAudioEngine uses video-chat speaker routing, minimal nonvoice ducking, an explicit mixer-to-output connection, 16 kHz mono PCM microphone input and 24 kHz
   playback. Audio recording explicitly permits haptics. There are no separate STT/TTS services.
 - The app waits for setup acknowledgement, bounds outgoing/audio playback queues,
-  clears playback on interruption and stops AI if camera images stop arriving. Local
-  depth/haptics remain independent of network/model errors.
+  clears playback on interruption and stops the session if camera images stop arriving.
+  Local depth/haptics never wait for network/model responses.
 - Context compression is enabled. When the service closes a connection or announces
-  its connection limit, tap Start AI to open a fresh session (no automatic resumption).
+  its connection limit, tap Start to open a fresh session (no automatic resumption).
 - Microphone audio, camera images and summarized proximity readings go to Google while AI is active. They are not
   written to local files. Transcripts are held in memory. Error messages omit credentials.
 
@@ -272,7 +295,6 @@ swiftc Aloud/AudioPlaybackHealth.swift Tests/AudioPlaybackChecks.swift -o /tmp/a
 /tmp/aloud-audio-checks
 ```
 
-Developers can launch a Debug build with `--audio-recovery-check` to repeat the
-on-device test. It plays tones and prints `ALOUD_AUDIO_RECOVERY_CHECK PASS` or `FAIL`
-to the app console. Microphone samples are discarded and no Gemini connection is
-opened during this check. Launch normally afterward to resume the voice app.
+The launch-triggered recovery check and its test tones have been removed. Normal
+startup opens the idle screen. Quiet automatic recovery remains enabled during
+voice sessions; **Test speaker** is available only when explicitly tapped in details.
