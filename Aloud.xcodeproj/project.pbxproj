@@ -1,72 +1,146 @@
 // !$*UTF8*$!
 {
 	archiveVersion = 1;
-	classes = {};
+	classes = {
+	};
 	objectVersion = 77;
 	objects = {
-		A10000000000000000000004 = {isa = PBXBuildFile; fileRef = A20000000000000000000005; };
-		A10000000000000000000005 = {isa = PBXBuildFile; fileRef = A20000000000000000000006; };
-		A20000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProximitySignal.swift; sourceTree = "<group>"; };
-		A20000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProximityMonitor.swift; sourceTree = "<group>"; };
-		A10000000000000000000001 /* AloudApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001; };
-		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002; };
-		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003; };
-		A20000000000000000000001 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AloudApp.swift; sourceTree = "<group>"; };
-		A20000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		A20000000000000000000003 = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		A20000000000000000000004 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aloud.app; sourceTree = BUILT_PRODUCTS_DIR; };
+
+/* Begin PBXBuildFile section */
+		A10000000000000000000001 /* AloudApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000001 /* AloudApp.swift */; };
+		A10000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000002 /* ContentView.swift */; };
+		A10000000000000000000003 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000003 /* Assets.xcassets */; };
+		A10000000000000000000004 /* ProximitySignal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000005 /* ProximitySignal.swift */; };
+		A10000000000000000000005 /* ProximityMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000006 /* ProximityMonitor.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		A20000000000000000000001 /* AloudApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AloudApp.swift; sourceTree = "<group>"; };
+		A20000000000000000000002 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A20000000000000000000003 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000000000000000000004 /* Aloud.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Aloud.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000000000000000000005 /* ProximitySignal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProximitySignal.swift; sourceTree = "<group>"; };
+		A20000000000000000000006 /* ProximityMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProximityMonitor.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
 		A30000000000000000000001 = {
 			isa = PBXGroup;
-			children = (A30000000000000000000002, A30000000000000000000003);
+			children = (
+				A30000000000000000000002 /* Aloud */,
+				A30000000000000000000003 /* Products */,
+			);
 			sourceTree = "<group>";
 		};
-		A30000000000000000000002 = {
+		A30000000000000000000002 /* Aloud */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000001, A20000000000000000000002, A20000000000000000000003, A20000000000000000000005, A20000000000000000000006);
+			children = (
+				A20000000000000000000001 /* AloudApp.swift */,
+				A20000000000000000000002 /* ContentView.swift */,
+				A20000000000000000000003 /* Assets.xcassets */,
+				A20000000000000000000005 /* ProximitySignal.swift */,
+				A20000000000000000000006 /* ProximityMonitor.swift */,
+			);
 			path = Aloud;
 			sourceTree = "<group>";
 		};
-		A30000000000000000000003 = {
+		A30000000000000000000003 /* Products */ = {
 			isa = PBXGroup;
-			children = (A20000000000000000000004);
+			children = (
+				A20000000000000000000004 /* Aloud.app */,
+			);
 			name = Products;
 			sourceTree = "<group>";
 		};
-		A40000000000000000000001 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000001, A10000000000000000000002, A10000000000000000000004, A10000000000000000000005); runOnlyForDeploymentPostprocessing = 0; };
-		A40000000000000000000002 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
-		A40000000000000000000003 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A10000000000000000000003); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
 		A50000000000000000000001 /* Aloud */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = A70000000000000000000002;
-			buildPhases = (A40000000000000000000001, A40000000000000000000002, A40000000000000000000003);
-			buildRules = ();
-			dependencies = ();
+			buildConfigurationList = A70000000000000000000002 /* Build configuration list for PBXNativeTarget "Aloud" */;
+			buildPhases = (
+				A40000000000000000000001 /* Sources */,
+				A40000000000000000000002 /* Frameworks */,
+				A40000000000000000000003 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
 			name = Aloud;
 			productName = Aloud;
-			productReference = A20000000000000000000004;
+			productReference = A20000000000000000000004 /* Aloud.app */;
 			productType = "com.apple.product-type.application";
 		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
 		A60000000000000000000001 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
-				TargetAttributes = {A50000000000000000000001 = {CreatedOnToolsVersion = 26.4; }; };
+				TargetAttributes = {
+					A50000000000000000000001 = {
+						CreatedOnToolsVersion = 26.4;
+					};
+				};
 			};
-			buildConfigurationList = A70000000000000000000001;
+			buildConfigurationList = A70000000000000000000001 /* Build configuration list for PBXProject "Aloud" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
-			knownRegions = (en, Base);
+			knownRegions = (
+				en,
+				Base,
+			);
 			mainGroup = A30000000000000000000001;
 			preferredProjectObjectVersion = 77;
-			productRefGroup = A30000000000000000000003;
+			productRefGroup = A30000000000000000000003 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (A50000000000000000000001);
+			targets = (
+				A50000000000000000000001 /* Aloud */,
+			);
 		};
-		A70000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000001, A80000000000000000000002); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
-		A70000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A80000000000000000000003, A80000000000000000000004); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A40000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000003 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A40000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000000000000000000001 /* AloudApp.swift in Sources */,
+				A10000000000000000000002 /* ContentView.swift in Sources */,
+				A10000000000000000000004 /* ProximitySignal.swift in Sources */,
+				A10000000000000000000005 /* ProximityMonitor.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
 		A80000000000000000000001 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -106,6 +180,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M536HFC3X7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud uses the camera and LiDAR to measure nearby surfaces and provide proximity vibrations. Camera data stays on this device.";
@@ -113,7 +188,10 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vhalasi.aloud;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -133,6 +211,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = M536HFC3X7;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_NSCameraUsageDescription = "Aloud uses the camera and LiDAR to measure nearby surfaces and provide proximity vibrations. Camera data stays on this device.";
@@ -140,7 +219,10 @@
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.vhalasi.aloud;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -153,6 +235,28 @@
 			};
 			name = Release;
 		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70000000000000000000001 /* Build configuration list for PBXProject "Aloud" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000000000000000000001 /* Debug */,
+				A80000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000000000000000000002 /* Build configuration list for PBXNativeTarget "Aloud" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A80000000000000000000003 /* Debug */,
+				A80000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
 	};
-	rootObject = A60000000000000000000001;
+	rootObject = A60000000000000000000001 /* Project object */;
 }
