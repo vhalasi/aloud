@@ -46,11 +46,47 @@ local depth/haptics continue; **Stop sensing and AI** ends both. Backgrounding e
   depth/haptics remain independent of network/model errors.
 - Context compression is enabled. When the service closes a connection or announces
   its connection limit, tap Start AI to open a fresh session (no automatic resumption).
-- Microphone audio and camera images go to Google while AI is active. They are not
+- Microphone audio, camera images and summarized proximity readings go to Google while AI is active. They are not
   written to local files. Transcripts are held in memory. Error messages omit credentials.
 
 References: [model](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-live),
 [Live protocol](https://ai.google.dev/api/live).
+
+## Proximity context and visual cautions
+
+The live agent receives camera-centred surface-distance events and can call
+`get_proximity_status` for a fresh reading. Events include source, measurement time,
+age, approximate metres, distance trend, and whether a brief warning is appropriate.
+Local vibration remains independent of cloud connectivity, speech and model decisions.
+A changing distance does not establish the user's walking direction or identify an object.
+
+Prototype voice bands are **nearby below 1.2 m** and **very close below 0.6 m**.
+Transitions must persist for 300 ms, use wider exit thresholds to suppress boundary
+jitter, and are sent at most once every two seconds. Most repeated warnings have an
+eight-second cooldown; entering the very-close band can request another warning.
+Updates wait until the greeting/current model response finishes and the send queue
+is uncongested. They are supplementary context, not immediate collision alarms.
+Stale readings expire after 600 ms. Simulation/stopped/unavailable states contain
+no real distance, and missing depth never means a path is clear.
+
+The prompt asks for concise cautions about visible obstacles, curbs and crossings.
+At crossings it prioritizes a clearly identified **pedestrian** signal for that
+crossing, describes WALK/don't-walk and meaningful changes, and distinguishes vehicle
+traffic lights. Unclear or old signal images must not be guessed. It never declares
+crossing safe or tells someone to cross based on a light, absent visible traffic,
+or depth. The camera cannot establish all traffic conditions. This remains a
+prototype for awareness; real-world pedestrian-signal recognition is unvalidated.
+
+Validation on 2026-10-03: signed device build and protocol/depth checks passed; update
+installed and launched on iPhone 15. In a real Gemini Live session, a supplied 0.5 m
+sensor event elicited “There is a surface very close to the camera” with PCM audio.
+The same session declined to treat a vehicle's green light as permission to cross.
+This verifies message/voice behavior, not real-world obstacle or traffic accuracy.
+
+```sh
+swiftc Aloud/ProximitySignal.swift Tests/ProximityContextChecks.swift -o /tmp/aloud-context-checks
+/tmp/aloud-context-checks
+```
 
 ## Nearby places
 
@@ -110,7 +146,7 @@ physical phone trial.
 
 ## Prototype behavior
 
-- TrueDepth uses `AVCaptureDepthDataOutput` on a serial background queue, with filtering disabled and conversion to Float32 depth in metres. Only frames reporting absolute depth accuracy are accepted. The central square of the front camera view is sampled. Depth data stays on the device. RGB images are sent to Gemini only while AI is on.
+- TrueDepth uses `AVCaptureDepthDataOutput` on a serial background queue, with filtering disabled and conversion to Float32 depth in metres. Only frames reporting absolute depth accuracy are accepted. The central square of the front camera view is sampled. Raw depth maps stay on the device. Summarized distance/freshness events and RGB images are sent to Gemini only while AI is on.
 - On the LiDAR fallback, ARKit supplies depth and confidence maps from the rear camera. Instructions always identify which camera to point at the obstacle.
 - TrueDepth accepts finite, positive samples; unlike the ARKit path, it has no per-pixel confidence map. LiDAR accepts only medium/high-confidence finite readings. At least 25% of sampled points (and at least eight readings) must be valid. The 20th percentile favors nearby surfaces while rejecting isolated noisy pixels.
 - Measurements update at up to 10 Hz. Closer readings take effect immediately; receding readings are smoothed.
