@@ -15,6 +15,13 @@ enum LiveProtocol {
         var setup: [String: Any] = [
             "model": "models/\(model)",
             "generationConfig": ["responseModalities": ["AUDIO"]],
+            // Require a stronger speech-start signal in busy surroundings. Keep
+            // normal turn ending and user interruption behavior unchanged.
+            "realtimeInputConfig": [
+                "automaticActivityDetection": [
+                    "startOfSpeechSensitivity": "START_SENSITIVITY_LOW"
+                ]
+            ],
             "inputAudioTranscription": [:],
             "outputAudioTranscription": [:],
             "contextWindowCompression": ["slidingWindow": [:]],

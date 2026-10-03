@@ -37,6 +37,11 @@ test was removed; the final app was installed and launched normally.
 
 ## Live voice and front-camera vision
 
+Speech-start detection uses Gemini's `START_SENSITIVITY_LOW` setting to reduce
+accidental turns and interruptions in busy surroundings. It does not identify the
+user's voice or guarantee rejection of nearby conversations. Speech-end timing
+and intentional spoken interruptions retain their default behavior.
+
 The developer supplies one shared hackathon key; users do not enter credentials.
 Copy `LocalSecrets.xcconfig.example` to `LocalSecrets.xcconfig`, paste the Gemini API key
 on the `GEMINI_API_KEY =` line, save, and rebuild. This local file is ignored by Git.
