@@ -122,13 +122,17 @@ def codex_command(folder):
     config = tomllib.loads(config_file.read_text()) if config_file.exists() else {}
     for name, server in config.get('mcp_servers', {}).items():
         if server.get('enabled', True):
-            args += ['-c', f'mcp_servers.{json.dumps(name)}.default_tools_approval_mode="approve"']
+            if not re.fullmatch(r'[a-zA-Z0-9_-]+', name):
+                raise ValueError('unsupported_mcp_server_name')
+            args += ['-c', f'mcp_servers.{name}.default_tools_approval_mode="approve"']
             if name == 'aloud-browser' and '--output-dir' in server.get('args', []):
                 browser_args = list(server['args'])
                 browser_args[browser_args.index('--output-dir') + 1] = str(folder / 'work' / 'artifacts')
-                args += ['-c', f'mcp_servers.{json.dumps(name)}.args={json.dumps(browser_args)}']
+                args += ['-c', f'mcp_servers.{name}.args={json.dumps(browser_args)}']
             for tool in server.get('tools', {}):
-                args += ['-c', f'mcp_servers.{json.dumps(name)}.tools.{json.dumps(tool)}.approval_mode="approve"']
+                if not re.fullmatch(r'[a-zA-Z0-9_-]+', tool):
+                    raise ValueError('unsupported_mcp_tool_name')
+                args += ['-c', f'mcp_servers.{name}.tools.{tool}.approval_mode="approve"']
     args += ['-']
     return args
 

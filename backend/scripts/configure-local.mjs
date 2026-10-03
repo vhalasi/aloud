@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 const profile = process.env.MATRIX_PROFILE ?? 'cloud';
 if (!/^[a-zA-Z0-9_-]+$/.test(profile)) throw new Error('Invalid Matrix profile');
 const auth = JSON.parse(await readFile(join(homedir(), '.matrixos', 'profiles', profile, 'auth.json'), 'utf8'));
-if (!auth.accessToken || auth.expiresAt <= Date.now()) throw new Error('Run matrix auth login first: token missing or expired');
+if (!auth.accessToken || auth.expiresAt <= Date.now()) throw new Error('Run matrix login --profile cloud first: token missing or expired');
 let previous = {};
 try { previous = JSON.parse(await readFile('.secrets.json', 'utf8')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
 const secrets = { API_TOKEN: previous.API_TOKEN ?? randomBytes(32).toString('hex'), MATRIX_ACCESS_TOKEN: auth.accessToken };

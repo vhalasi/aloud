@@ -85,8 +85,9 @@ print(json.dumps({'type':'item.completed','item':{'type':'command_execution','st
             if previous is None:os.environ.pop('CODEX_HOME',None)
             else:os.environ['CODEX_HOME']=previous
         self.assertIn('--dangerously-bypass-approvals-and-sandbox',args)
+        self.assertFalse(any('mcp_servers."' in arg for arg in args))
         self.assertTrue(any('default_tools_approval_mode="approve"' in arg for arg in args))
-        self.assertTrue(any('browser_navigate".approval_mode="approve"' in arg for arg in args))
+        self.assertTrue(any('browser_navigate.approval_mode="approve"' in arg for arg in args))
         self.assertTrue(any(str(self.root/'work/artifacts') in arg for arg in args))
 
 if __name__=='__main__':unittest.main()
